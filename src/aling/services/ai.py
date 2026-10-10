@@ -3,10 +3,10 @@ import json
 
 import httpx
 
-from ryxbot.core.config import Settings
-from ryxbot.core.logging import log
-from ryxbot.core.rate_limit import RateLimiter
-from ryxbot.services.http import read_limited
+from aling.core.config import Settings
+from aling.core.logging import log
+from aling.core.rate_limit import RateLimiter
+from aling.services.http import read_limited
 
 
 class OpenAIClient:

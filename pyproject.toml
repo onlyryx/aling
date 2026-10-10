@@ -3,13 +3,15 @@ requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ryxbot"
+name = "aling"
 version = "0.1.0"
-description = "A modular QQ group bot by onlyryx, powered by NoneBot2 and OneBot V11"
+description = "阿零 (ALING), a plugin-based QQ group bot by Jack233_ (onlyryx)"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
-authors = [{name = "onlyryx"}]
+authors = [{name = "Jack233_"}]
+maintainers = [{name = "Jack233_"}]
+keywords = ["qq", "bot", "nonebot2", "onebot-v11", "aling"]
 dependencies = [
   "nonebot2[fastapi]>=2.5,<3",
   "nonebot-adapter-onebot>=2.4,<3",
@@ -21,11 +23,18 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "pytest-timeout>=2.4,<3", "ruff>=0.11,<1", "build>=1.2,<2"]
 
+[project.urls]
+Homepage = "https://github.com/onlyryx/aling"
+Repository = "https://github.com/onlyryx/aling"
+Issues = "https://github.com/onlyryx/aling/issues"
+
 [project.scripts]
-ryxbot = "ryxbot.app:main"
+aling = "aling.app:main"
+ryxbot = "aling.app:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ryxbot"]
+packages = ["src/aling"]
+artifacts = ["src/aling/prompts/default.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

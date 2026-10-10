@@ -1,3 +1,4 @@
+from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -28,11 +29,10 @@ class Settings(BaseSettings):
     ai_cooldown_seconds: float = Field(default=3, ge=0)
     ai_max_per_hour: int = Field(default=20, ge=1)
     ai_max_concurrency: int = Field(default=2, ge=1, le=16)
-    ai_system_prompt: str = (
-        "你是 ryxbot，onlyryx 旗下的 QQ 群机器人。像一位友善的群友，回答简洁自然，"
-        "可以适度接梗。专业问题认真回答，不确定时明确说明。"
-        "你目前只能进行文本对话，没有联网、群管理或系统命令执行能力，"
-        "不能声称已经执行任何操作。"
+    ai_system_prompt: str = Field(
+        default_factory=lambda: (
+            files("aling").joinpath("prompts/default.txt").read_text(encoding="utf-8").strip()
+        )
     )
 
     proactive_enabled: bool = False

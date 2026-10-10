@@ -5,9 +5,9 @@ from nonebot.adapters.onebot.v11 import Adapter
 from pydantic import ValidationError
 from pydantic_settings import SettingsError
 
-from ryxbot.core.config import Settings
-from ryxbot.core.logging import configure_logging, log
-from ryxbot.runtime import Runtime, set_runtime
+from aling.core.config import Settings
+from aling.core.logging import configure_logging, log
+from aling.runtime import Runtime, set_runtime
 
 
 def build_app(
@@ -39,14 +39,14 @@ def build_app(
     @driver.on_startup
     async def startup() -> None:
         await runtime.startup()
-        log.info("ryxbot ready; waiting for authenticated OneBot connection")
+        log.info("阿零 (ALING) ready; waiting for authenticated OneBot connection")
 
     @driver.on_shutdown
     async def shutdown() -> None:
         await runtime.shutdown()
-        log.info("ryxbot stopped")
+        log.info("阿零 (ALING) stopped")
 
-    for plugin in ["ryxbot.plugins.commands", "ryxbot.plugins.ai_chat", *settings.extra_plugins]:
+    for plugin in ["aling.plugins.commands", "aling.plugins.ai_chat", *settings.extra_plugins]:
         if nonebot.load_plugin(plugin) is None:
             raise RuntimeError("A configured plugin could not be loaded")
     app = nonebot.get_app()

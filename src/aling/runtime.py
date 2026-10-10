@@ -2,11 +2,11 @@ from dataclasses import dataclass
 
 import httpx
 
-from ryxbot.core.config import Settings
-from ryxbot.core.storage import GroupSettingsStore
-from ryxbot.services.ai import ChatService, OpenAIClient
-from ryxbot.services.proactive import ProactiveSender
-from ryxbot.services.web import SafeWebClient
+from aling.core.config import Settings
+from aling.core.storage import GroupSettingsStore
+from aling.services.ai import ChatService, OpenAIClient
+from aling.services.proactive import ProactiveSender
+from aling.services.web import SafeWebClient
 
 
 @dataclass

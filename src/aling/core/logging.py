@@ -4,7 +4,7 @@ from typing import Any
 
 from nonebot.log import logger
 
-log = logger.bind(ryxbot_event=True)
+log = logger.bind(aling_event=True)
 
 
 class LibraryLogHandler(logging.Handler):
@@ -15,7 +15,7 @@ class LibraryLogHandler(logging.Handler):
 
 def privacy_filter(record: dict[str, Any]) -> bool:
     record["exception"] = None
-    if record["extra"].get("ryxbot_event"):
+    if record["extra"].get("aling_event"):
         return True
     if record["level"].no >= logging.WARNING:
         record["message"] = "framework/library event (details suppressed for privacy)"

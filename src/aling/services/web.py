@@ -7,8 +7,8 @@ from urllib.parse import urlsplit
 import httpx
 from bs4 import BeautifulSoup
 
-from ryxbot.core.extensions import WebPage
-from ryxbot.services.http import read_limited
+from aling.core.extensions import WebPage
+from aling.services.http import read_limited
 
 
 class UnsafeURL(ValueError):
@@ -88,7 +88,7 @@ class SafeWebClient:
                     pinned,
                     headers={
                         "Host": url.netloc.decode("ascii"),
-                        "User-Agent": "ryxbot/0.1",
+                        "User-Agent": "ALING/0.1.0",
                         "Accept-Encoding": "identity",
                     },
                     extensions={"sni_hostname": url.host},

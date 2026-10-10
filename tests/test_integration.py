@@ -7,9 +7,9 @@ from fastapi.testclient import TestClient
 from nonebot.log import logger
 from starlette.websockets import WebSocketDisconnect
 
-from ryxbot.app import build_app
-from ryxbot.core.config import Settings
-from ryxbot.core.logging import configure_logging
+from aling.app import build_app
+from aling.core.config import Settings
+from aling.core.logging import configure_logging
 
 
 def event(text, *, role="member", mention=False, user=12, group=34):
@@ -70,7 +70,7 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
             # A subsequent /ping proves these preceding messages produced no reply.
             for ignored in [
                 event("ordinary private discussion"),
-                event("ryxbot hello"),
+                event("阿零 hello"),
                 event("hello", mention=True, user=99),
                 event("hello", mention=True, group=56),
             ]:
@@ -92,7 +92,8 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                 return request["params"]["message"]
 
             assert exchange(event("/ping"))[0]["data"]["text"] == "pong"
-            assert "/help" in exchange(event("/help"))[0]["data"]["text"]
+            help_text = exchange(event("/help"))[0]["data"]["text"]
+            assert "/help" in help_text and "阿零（ALING）" in help_text
             denied = exchange(event("/proactive on"))[0]["data"]["text"]
             assert "管理员" in denied
             assert "开启" in exchange(event("/proactive on", role="admin"))[0]["data"]["text"]
@@ -109,7 +110,7 @@ def test_logging_omits_framework_message_content_and_exception_locals():
     configure_logging("DEBUG", sink=lines.append)
     logger.bind().opt(exception=ValueError("SECRET")).warning("third party SECRET")
     logging.getLogger("httpx").warning("https://secret-host/?key=SECRET")
-    logger.bind(ryxbot_event=True).info("service_ready")
+    logger.bind(aling_event=True).info("service_ready")
     output = "".join(str(line) for line in lines)
     assert "SECRET" not in output
     assert "secret-host" not in output

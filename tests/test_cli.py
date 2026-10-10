@@ -30,7 +30,7 @@ def test_cli_rejects_invalid_configuration_without_printing_secret(tmp_path):
         AI_API_KEY="DO_NOT_PRINT_ME",
     )
     result = subprocess.run(
-        [sys.executable, "-m", "ryxbot.app"],
+        [sys.executable, "-m", "aling.app"],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -48,7 +48,7 @@ def test_cli_starts_http_server_and_shuts_down_without_qq_connection(tmp_path):
         sock.bind(("127.0.0.1", 0))
         env["PORT"] = str(sock.getsockname()[1])
     process = subprocess.Popen(
-        [sys.executable, "-m", "ryxbot.app"],
+        [sys.executable, "-m", "aling.app"],
         cwd=tmp_path,
         env=env,
         stdout=subprocess.PIPE,
@@ -73,14 +73,14 @@ def test_cli_starts_http_server_and_shuts_down_without_qq_connection(tmp_path):
     assert healthy, stderr
     # Uvicorn re-raises the shutdown signal after completing its lifecycle hooks.
     assert process.returncode in (0, -signal.SIGTERM)
-    assert "ryxbot stopped" in stderr
+    assert "阿零 (ALING) stopped" in stderr
     assert "local-test-token" not in stdout + stderr
 
 
 def test_cli_rejects_malformed_json_configuration_without_traceback(tmp_path):
     env = dict(environment(tmp_path), SUPERUSERS="invalid-json-DO_NOT_PRINT_ME")
     result = subprocess.run(
-        [sys.executable, "-m", "ryxbot.app"],
+        [sys.executable, "-m", "aling.app"],
         cwd=tmp_path,
         env=env,
         capture_output=True,

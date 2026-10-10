@@ -18,4 +18,4 @@ RUN uv sync --frozen --no-dev --no-editable \
 ENV PATH="/app/.venv/bin:$PATH" HOST=0.0.0.0
 USER bot
 EXPOSE 8080
-CMD ["ryxbot"]
+CMD ["aling"]

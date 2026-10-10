@@ -5,12 +5,12 @@ import json
 import httpx
 import pytest
 
-from ryxbot.core.config import Settings
-from ryxbot.core.permissions import PermissionContext
-from ryxbot.core.storage import GroupSettingsStore
-from ryxbot.services.ai import ChatService, OpenAIClient
-from ryxbot.services.proactive import ProactiveSender
-from ryxbot.services.web import SafeWebClient, UnsafeURL
+from aling.core.config import Settings
+from aling.core.permissions import PermissionContext
+from aling.core.storage import GroupSettingsStore
+from aling.services.ai import ChatService, OpenAIClient
+from aling.services.proactive import ProactiveSender
+from aling.services.web import SafeWebClient, UnsafeURL
 
 
 def settings(**kwargs):

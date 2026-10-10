@@ -2,8 +2,8 @@ from nonebot import on_message
 from nonebot.adapters.onebot.v11 import Event, GroupMessageEvent, MessageSegment
 from nonebot.plugin import PluginMetadata
 
-from ryxbot.core.events import explicit_group_prompt
-from ryxbot.runtime import get_runtime
+from aling.core.events import explicit_group_prompt
+from aling.runtime import get_runtime
 
 __plugin_meta__ = PluginMetadata(
     name="AI 聊天",

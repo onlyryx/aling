@@ -1,4 +1,37 @@
-# 第一阶段验证记录
+# 验证记录
+
+## 本地发布前检查
+
+验证日期：2026-10-10（Asia/Shanghai）。
+
+- `uv run --frozen --extra dev pytest -q`：59 项通过；保留 1 条 Starlette 关于
+  `httpx` TestClient 的弃用提示，未屏蔽。
+- Ruff 检查和格式检查通过；`uv lock --check` 通过。
+- `uv build` 生成 `aling-0.1.0` sdist 和 wheel。
+- `RYXBOT_ENV_FILE=.env.example docker compose --env-file .env.example --profile qq config --quiet`
+  通过；`docker build -t aling:local .` 通过。
+- 更新已有 `.dockerignore`，保留环境文件、Git 元数据、运行目录、测试和本地工具
+  排除规则，并补充根目录及其他路径下 SQLite 数据库和 WAL/journal 文件的排除。
+- `.env` 未被 Git 跟踪且受忽略规则保护；Git 历史中没有 `.env`、数据库或 NapCat
+  二维码文件路径。工作区存在被忽略的 `data/ryxbot.db`，没有读取其内容。
+- 这些检查未覆盖远程 CI；未使用真实 QQ 或模型凭据。首次推送后的 CI 状态需在 GitHub Actions 确认。
+
+以下记录按时间列出迁名前和命名迁移时的验证结果；更早记录中的环境限制不代表当前状态。
+
+## ALING 命名迁移验证
+
+验证日期：2026-10-10（Asia/Shanghai）。
+
+- Ruff 检查与格式检查通过；Python 全量测试 59 项通过。
+- `uv lock --check` 通过，项目元数据与锁文件一致。
+- Python wheel/sdist 构建通过；新 wheel 已实测导入与默认人格资源。CLI 主入口为
+  `aling`，旧 `ryxbot` CLI 保留为兼容入口；两个命令均已验证可启动并在缺少令牌时安全退出。
+- Compose 配置验证通过，镜像改为 `aling`，项目名和数据卷沿用 `ryxbot`，原数据库
+  路径继续使用 `data/ryxbot.db`。
+- `docker build -t aling:local .` 通过。
+- 未登录 QQ、未请求真实模型或部署；远程 CI 状态需在 GitHub Actions 确认。
+
+## 迁名前第一阶段验证记录
 
 验证日期：2026-10-10（Asia/Shanghai）。
 

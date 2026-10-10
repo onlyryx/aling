@@ -6,7 +6,7 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
-from ryxbot.core.events import explicit_group_prompt
+from aling.core.events import explicit_group_prompt
 
 
 def group_event(message, *, role="member", user_id=12, to_me=False):
@@ -38,7 +38,7 @@ def test_explicit_at_uses_original_segments_after_adapter_strips_at():
     "message,user_id,to_me",
     [
         (Message("normal conversation"), 12, False),
-        (Message("ryxbot hello"), 12, True),
+        (Message("阿零 hello"), 12, True),
         (MessageSegment.reply(123) + "hello", 12, True),
         (MessageSegment.reply(123) + MessageSegment.at(99) + "just replying", 12, True),
         (MessageSegment.at(88) + "hello", 12, True),

@@ -1,5 +1,8 @@
+name: ryxbot
+
 services:
   bot:
+    image: aling:latest
     build: .
     restart: unless-stopped
     env_file:

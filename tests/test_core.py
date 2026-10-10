@@ -3,10 +3,10 @@ import sqlite3
 import pytest
 from pydantic import ValidationError
 
-from ryxbot.core.config import Settings
-from ryxbot.core.permissions import PermissionContext, require_group_admin
-from ryxbot.core.rate_limit import RateLimiter
-from ryxbot.core.storage import GroupSettingsStore
+from aling.core.config import Settings
+from aling.core.permissions import PermissionContext, require_group_admin
+from aling.core.rate_limit import RateLimiter
+from aling.core.storage import GroupSettingsStore
 
 
 def test_configuration_rejects_missing_token_and_incomplete_ai():

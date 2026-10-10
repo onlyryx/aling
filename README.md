@@ -1,22 +1,28 @@
-# ryxbot
+# 阿零（ALING）
 
-onlyryx 旗下独立开源 QQ 群机器人，功能插件为主、AI 聊天为辅。
+阿零（ALING）是由 Jack233_ 开发、属于 onlyryx 个人品牌的开源 QQ 群机器人。
+它既是能聊天、接梗的电子群友，也是可以通过插件扩展、处理实用任务的群聊助手。
+项目以工具功能为核心，支持可配置的 AI 模型与长期演进的插件架构；人格设定是
+“平时不太正经，办事必须靠谱”。
 
-第一阶段提供基础指令、群内明确 @ 触发的单轮 AI 聊天、隐私日志及插件扩展入口。
-使用 Python 3.12+、NoneBot2、OneBot V11、NapCatQQ、SQLite、httpx 与 BeautifulSoup。
-许可证：MIT。
+源码与问题反馈：[GitHub 仓库](https://github.com/onlyryx/aling)。
+
+当前已交付的是稳健的第一阶段基础：实用指令、群内明确 @ 聊天、权限与安全边界。
+表情包搜索、网页和更多群管理工具有扩展接口，尚未伪装成已经可用的功能。
+技术栈为 Python 3.12+、NoneBot2、OneBot V11、NapCatQQ、SQLite、httpx 与
+BeautifulSoup。许可证：MIT。
 
 ## 当前功能
 
 - `/help`：帮助；`/ping`：回复 `pong`。群聊和私聊均可使用。
-- 群内 `@机器人 你的问题`：可配置的 OpenAI 兼容 Chat Completions API。
+- 群内 `@阿零 你的问题`：调用可配置的 OpenAI 兼容 Chat Completions API。
 - `/proactive on|off`：仅群主、群管理员或配置的超级用户可调整本群开关。
 - SQLite 仅持久化群开关；AI 无群聊历史，不收集普通聊天。
 - 群允许列表、AI 冷却/小时限频/全局并发限制、统一主动发言限制。
 - 表情包搜索、网页解析、群管理扩展协议与受保护的网页读取服务。
 
 第一阶段没有自动插话、表情包供应商、封禁指令、多轮记忆或 AI 工具执行。
-群友人格由可配置的提示词提供，后续按具体功能逐步扩展。
+人格提示词位于 `src/aling/prompts/default.txt`，可用原有 `AI_SYSTEM_PROMPT` 环境变量覆盖。
 
 ## 本地运行
 
@@ -50,8 +56,9 @@ AI_MODEL=服务商支持的模型标识
 客户端请求未压缩响应，拒绝忽略 `Accept-Encoding: identity` 而强制返回压缩内容的服务。
 
 ```sh
-uv run --frozen ryxbot
-# 或 uv run --frozen python bot.py
+uv run --frozen aling
+# 兼容旧部署脚本：uv run --frozen ryxbot
+# 不使用 uv：python -m aling.app
 ```
 
 缺少令牌或启用了 AI 却缺少模型配置时，程序退出并只提示错误配置项。
@@ -69,12 +76,12 @@ uv run --frozen ryxbot
 1. 同机本地运行的 URL：`ws://127.0.0.1:8080/onebot/v11/ws`。
 2. Token 填写与 `.env` 的 `ONEBOT_ACCESS_TOKEN` 完全相同的值。
 3. 启用连接与群消息上报，消息格式选择 `array`。
-4. 群里发送 `/ping`、`/help`；配置 AI 后发送 `@机器人 你好`。
+4. 群里发送 `/ping`、`/help`；配置 AI 后发送 `@阿零 你好`。
 
 这是 [NoneBot 官方适配器推荐的方式](https://onebot.adapters.nonebot.dev/docs/guide/setup/)。
 昵称、普通回复机器人（包括回复自动附带的 @）、@ 他人、@ 全体、普通群聊和私聊
 均不会触发 AI；回复中另行添加独立 @ 可以触发。
-`@机器人 /ping` 仍由指令插件处理。AI 不读取回复消息的历史正文或图片内容。
+`@阿零 /ping` 仍由指令插件处理。AI 不读取回复消息的历史正文或图片内容。
 
 默认 `ALLOWED_GROUPS=[]` 表示所有群可用；实际接入时建议配置目标群 ID，例如
 `ALLOWED_GROUPS=[123456789]`。`SUPERUSERS=[12345678]` 填维护者 QQ ID。
@@ -86,6 +93,7 @@ uv run --frozen ryxbot
 
 ```sh
 # 只构建并启动 bot，不启动 NapCat、不登录账号
+# 镜像名称为 aling；兼容沿用项目名 ryxbot 以保留既有命名数据卷
 docker compose up --build -d bot
 docker compose logs -f bot
 ```
@@ -111,7 +119,7 @@ NapCat 镜像来自 [官方容器项目](https://github.com/NapNeko/NapCat-Docke
 ## 工程结构与扩展
 
 ```text
-src/ryxbot/
+src/aling/
   app.py               # 驱动、OneBot 注册、插件加载、生命周期
   runtime.py           # 共享服务与依赖
   core/
@@ -130,6 +138,7 @@ src/ryxbot/
   plugins/
     commands.py        # /help /ping /proactive
     ai_chat.py         # QQ 群事件与 AI 服务间的适配
+  prompts/default.txt  # 随包发布的默认人格
 tests/                 # 离线测试与 OneBot 模拟连接
 ```
 
@@ -154,6 +163,10 @@ tests/                 # 离线测试与 OneBot 模拟连接
 限频器为单进程内存状态，重启清空；本阶段仅部署一个 bot 进程。群开关持久化。
 全局开关关闭即禁止主动发送，群开关关闭与发送通过同一锁保持顺序。
 
+旧数据兼容说明：数据库默认仍在 `data/ryxbot.db`，Compose 项目名固定为 `ryxbot`，
+保留此前的 `bot-data`、`napcat-qq`、`napcat-config` 数据卷名。原 `ryxbot` 命令、
+根目录 `bot.py` 与 `RYXBOT_ENV_FILE` 留作兼容入口；新项目包和模块导入使用 `aling`。
+
 ## 隐私与安全默认值
 
 密钥与账号资料不提交 Git，也不进入镜像构建上下文。应用日志输出固定事件和
@@ -175,7 +188,7 @@ uv run --frozen --extra dev ruff check .
 uv run --frozen --extra dev ruff format --check .
 uv build
 RYXBOT_ENV_FILE=.env.example docker compose --env-file .env.example --profile qq config --quiet
-docker build -t ryxbot:local .
+docker build -t aling:local .
 ```
 
 测试使用模拟 HTTP 传输与带令牌的本地 ASGI WebSocket，不接入真实 QQ、模型或网页。

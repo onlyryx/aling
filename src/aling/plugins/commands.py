@@ -5,9 +5,9 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageEvent
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
 
-from ryxbot.core.logging import log
-from ryxbot.core.permissions import PermissionContext
-from ryxbot.runtime import get_runtime
+from aling.core.logging import log
+from aling.core.permissions import PermissionContext
+from aling.runtime import get_runtime
 
 __plugin_meta__ = PluginMetadata(
     name="基础指令",
@@ -34,7 +34,7 @@ proactive_command = on_command("proactive", rule=in_scope, priority=5, block=Tru
 async def help_handler() -> None:
     await help_command.finish(
         MessageSegment.text(
-            "ryxbot · onlyryx\n/help 查看帮助\n/ping 检查连通性\n"
+            "阿零（ALING）· Jack233_ / onlyryx\n/help 查看帮助\n/ping 检查连通性\n"
             "群内 @ 我并附上文字：AI 聊天（需维护者启用）\n"
             "/proactive on|off：群管理员设置主动发言开关\n"
             "主动发言还受全局开关限制；当前没有自动发言功能。\n"

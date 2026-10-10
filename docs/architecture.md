@@ -1,6 +1,7 @@
-# ryxbot 第一阶段架构
+# 阿零（ALING）架构
 
-onlyryx 旗下独立开源 QQ 群机器人。功能插件为主，AI 聊天为辅。
+Jack233_ 在 onlyryx 品牌下开发并维护的开源 QQ 群机器人。工具与插件为主，AI 聊天
+提供自然的群友交互。
 
 ## 边界与数据流
 
@@ -13,7 +14,7 @@ NapCatQQ → OneBot V11 反向 WebSocket → NoneBot matcher → 服务 → 回�
 基础指令优先于 AI：`/help`、`/ping`、群管理员用 `/proactive on|off`。
 AI 仅接收群内明确 @ 本机器人且包含文本的提问，排除命令、自身消息与私聊。
 昵称或回复消息本身（包括紧随 reply 的自动附带 @）不能触发 AI；另加独立 @ 可触发。
-模型只得到人格提示和当前提问；没有历史、
+模型只得到独立默认人格文件和当前提问；没有历史、
 QQ 账号标识、工具执行器或系统命令入口。模型输出以纯文本消息段发送。
 
 ## 状态与安全
@@ -44,3 +45,7 @@ QQ 账号标识、工具执行器或系统命令入口。模型输出以纯文�
 SSRF 与日志隐私；FastAPI TestClient 模拟带令牌的 OneBot 连接与 API 往返。
 检查安装、lint、wheel/sdist 构建和未配置凭据时的启动失败行为。
 Docker Compose 默认只有 bot；NapCat 为显式启用的 profile，账号登录由用户完成。
+
+SQLite 数据库文件继续使用 `data/ryxbot.db`，Compose 项目继续使用 `ryxbot`，
+因此默认命名空间下原有数据库与 `bot-data`、`napcat-qq`、`napcat-config` 数据卷
+保持原名。`RYXBOT_ENV_FILE` 和 `ryxbot` CLI 是供旧部署脚本使用的兼容别名。

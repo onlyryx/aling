@@ -10,7 +10,10 @@ dist
 build
 tests
 __pycache__
-*.pyc
+*.py[cod]
 .pytest_cache
 .ruff_cache
 .DS_Store
+*.db
+*.db-*
+*.sqlite*

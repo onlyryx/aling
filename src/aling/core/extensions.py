@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from ryxbot.core.permissions import PermissionContext
+from aling.core.permissions import PermissionContext
 
 
 @dataclass(frozen=True)
