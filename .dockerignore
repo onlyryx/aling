@@ -1,0 +1,16 @@
+.git
+.venv
+.tools
+.superpowers
+.env
+.env.*
+data
+logs
+dist
+build
+tests
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.DS_Store

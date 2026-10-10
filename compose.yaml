@@ -1,0 +1,47 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: ${RYXBOT_ENV_FILE:-.env}
+        required: true
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8080"
+      DATABASE_PATH: /app/data/ryxbot.db
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - bot-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  napcat:
+    profiles: [qq]
+    image: ${NAPCAT_IMAGE:-mlikiowa/napcat-docker:latest}
+    restart: unless-stopped
+    environment:
+      NAPCAT_UID: ${NAPCAT_UID:-1000}
+      NAPCAT_GID: ${NAPCAT_GID:-1000}
+    ports:
+      - "127.0.0.1:6099:6099"
+    volumes:
+      - napcat-qq:/app/.config/QQ
+      - napcat-config:/app/napcat/config
+    depends_on:
+      bot:
+        condition: service_healthy
+
+volumes:
+  bot-data:
+  napcat-qq:
+  napcat-config:
