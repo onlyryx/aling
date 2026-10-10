@@ -250,6 +250,9 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                 in exchange(event("/feature memory confirm", role="admin"))[0]["data"]["text"]
             )
             exchange(event("remember this", mention=True))
+            assert (
+                "已开启" in exchange(event("/feature memory on", role="admin"))[0]["data"]["text"]
+            )
             exchange(event("what did I ask?", mention=True))
             assert [message["content"] for message in model_messages[-1]] == [
                 config.ai_system_prompt,
@@ -258,6 +261,16 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                 "what did I ask?",
             ]
             assert "已清除" in exchange(event("/forget"))[0]["data"]["text"]
+            exchange(event("/feature memory off", role="admin"))
+            exchange(event("/feature memory on", role="admin"))
+            exchange(event("/feature ai off", role="admin"))
+            assert (
+                "确认已过期"
+                in exchange(event("/feature memory confirm", role="admin"))[0]["data"]["text"]
+            )
+            exchange(event("/feature ai on", role="admin"))
+            exchange(event("/feature memory on", role="admin"))
+            exchange(event("/feature memory confirm", role="admin"))
             exchange(event("fresh question", mention=True))
             assert len(model_messages[-1]) == 2
             assert "关闭" in exchange(event("/feature global memory off"))[0]["data"]["text"]

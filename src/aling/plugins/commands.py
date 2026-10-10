@@ -1,5 +1,4 @@
 import re
-from time import monotonic
 from typing import Annotated
 
 from nonebot import get_bots, get_loaded_plugins, on_command, on_message
@@ -10,7 +9,7 @@ from nonebot.plugin import PluginMetadata
 from aling.core.logging import log
 from aling.core.permissions import PermissionContext, require_group_admin
 from aling.runtime import get_runtime
-from aling.services.features import FeatureDisabledError
+from aling.services.features import FeatureDisabledError, MemoryConfirmationRequired
 from aling.services.help import render_help
 
 __plugin_meta__ = PluginMetadata(
@@ -38,7 +37,6 @@ ping_command = on_command("ping", rule=in_scope, priority=5, block=True)
 proactive_command = on_command("proactive", rule=in_scope, priority=5, block=True)
 feature_command = on_command("feature", rule=in_scope, priority=5, block=True)
 status_command = on_command("status", rule=in_scope, priority=5, block=True)
-_memory_confirmations: dict[tuple[int, int], float] = {}
 
 
 async def unknown_command(event: MessageEvent) -> bool:
@@ -175,8 +173,6 @@ async def feature_handler(event: MessageEvent, args: Annotated[Message, CommandA
             await feature_command.finish(MessageSegment.text("仅配置的超级用户可操作全局功能。"))
         try:
             await runtime.features.set_global(event.user_id, parts[1], parts[2] == "on")
-            if parts[1] in {"ai", "memory"} and parts[2] == "off":
-                await runtime.sessions.clear()
         except FeatureDisabledError as exc:
             await feature_command.finish(MessageSegment.text(str(exc)))
         except Exception as exc:
@@ -202,35 +198,15 @@ async def feature_handler(event: MessageEvent, args: Annotated[Message, CommandA
     context = PermissionContext(event.user_id, event.group_id, event.sender.role or "member")
     try:
         require_group_admin(context, runtime.settings.superusers, runtime.settings.allowed_groups)
-        if parts == ["memory", "on"] and not await runtime.features.enabled(
-            event.group_id, "memory"
-        ):
-            if not runtime.features.globally_enabled("memory"):
-                raise FeatureDisabledError("Global memory switch is off")
-            _set_memory_confirmation((event.group_id, event.user_id))
-            await feature_command.finish(
-                MessageSegment.text(
-                    f"开启前请确认：只暂存群员明确 @ 阿零的提问与回复，空闲 "
-                    f"{runtime.settings.ai_session_ttl} 秒后过期，最迟一分钟内清理；最多 "
-                    f"{runtime.settings.ai_session_max_turns} 轮，内容会随后续提问发送给模型服务；"
-                    "不写入日志或数据库，可用 /forget 清除。"
-                    "若同意，请在 60 秒内发送 /feature memory confirm。"
-                )
-            )
+        if parts == ["memory", "on"]:
+            if await runtime.features.enabled(event.group_id, "memory"):
+                await feature_command.finish(MessageSegment.text("本群 memory 功能已开启。"))
+            confirmation = await runtime.features.request_memory(context, scope="qq")
+            await feature_command.finish(MessageSegment.text(confirmation.notice))
         if parts == ["memory", "confirm"]:
-            expires = _memory_confirmations.pop((event.group_id, event.user_id), 0)
-            if expires < monotonic():
-                await feature_command.finish(
-                    MessageSegment.text("确认已过期；请先运行 /feature memory on 查看说明。")
-                )
-            await runtime.features.set(context, "memory", True)
+            await runtime.features.confirm_memory(context, scope="qq")
         elif parts[1] in {"on", "off"}:
             await runtime.features.set(context, parts[0], parts[1] == "on")
-        if parts[0] in {"ai", "memory"} and parts[1] == "off":
-            await runtime.sessions.clear_group(event.group_id)
-            for key in list(_memory_confirmations):
-                if key[0] == event.group_id:
-                    del _memory_confirmations[key]
     except PermissionError:
         await feature_command.finish(
             MessageSegment.text("仅本群群主、管理员或机器人超级用户可操作。")
@@ -241,15 +217,9 @@ async def feature_handler(event: MessageEvent, args: Annotated[Message, CommandA
                 f"此功能尚未由超级用户开启；请先运行 /feature global {parts[0]} on。"
             )
         )
+    except MemoryConfirmationRequired:
+        await feature_command.finish(
+            MessageSegment.text("确认已过期；请先运行 /feature memory on 查看说明。")
+        )
     status = "关闭" if parts[1] == "off" else "开启"
     await feature_command.finish(MessageSegment.text(f"本群 {parts[0]} 功能已{status}。"))
-
-
-def _set_memory_confirmation(key: tuple[int, int]) -> None:
-    now = monotonic()
-    for old_key, expires in list(_memory_confirmations.items()):
-        if expires < now:
-            del _memory_confirmations[old_key]
-    if key not in _memory_confirmations and len(_memory_confirmations) >= 1000:
-        del _memory_confirmations[next(iter(_memory_confirmations))]
-    _memory_confirmations[key] = now + 60
