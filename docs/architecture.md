@@ -72,5 +72,5 @@ NapCat 为 Compose 的显式 `qq` profile，默认 Compose 只运行 bot。升�
 ## 后续设计
 
 v0.4 内置可选 WebUI 的范围与权限设计见
-[管理面板设计草案](superpowers/specs/2026-10-11-v0.4-webui-design.md)。该面板尚未实现，
+[管理面板设计](superpowers/specs/2026-10-11-v0.4-webui-design.md)。该面板尚未实现，
 不属于当前 v0.3.1 的运行功能。
