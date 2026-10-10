@@ -9,13 +9,13 @@
 
 ```dotenv
 EXTRA_PLUGINS=["docs.plugins.example_plugin"]
-WEB_ENABLED=true
 ALING_EXAMPLE_ENABLED=true
 ALING_EXAMPLE_COOLDOWN_SECONDS=3
 ALING_EXAMPLE_MAX_PER_HOUR=10
 ```
 
-随后由群管理员在允许的群内运行 `/feature web on`。示例不调用外部服务；接入真实
+示例插件无需部署者全局授权。使用项目内网页功能时，先由超级用户运行 `/feature global web on`，
+再由群管理员在允许的群内运行 `/feature web on`。示例不调用外部服务；接入真实
 服务时，在服务层增加输入校验、超时和失败处理，并只将固定事件类别写入日志。
 
 离线验证示例设置见 `tests/test_plugin_example.py`；`tests/test_core.py` 覆盖项目共用的

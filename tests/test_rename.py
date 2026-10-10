@@ -11,7 +11,7 @@ def test_project_metadata_and_python_package_use_formal_name():
     with (ROOT / "pyproject.toml").open("rb") as file:
         project = tomllib.load(file)["project"]
     assert project["name"] == "aling"
-    assert project["version"] == "0.3.0"
+    assert project["version"] == "0.3.1"
     assert project["authors"] == [{"name": "Jack233_"}]
     assert project["maintainers"] == [{"name": "Jack233_"}]
     assert project["scripts"]["aling"] == "aling.app:main"

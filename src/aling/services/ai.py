@@ -101,7 +101,7 @@ class ChatService:
         config = self.settings
         if not config.group_allowed(group_id):
             return "本群未开放 AI 聊天。"
-        if not config.ai_enabled:
+        if not config.ai_configured:
             return "AI 聊天未启用，请联系机器人维护者配置。"
         prompt = prompt.strip()
         if not prompt:
@@ -132,7 +132,7 @@ class ChatService:
         history: list[dict[str, str]] | None = None,
     ) -> "ChatOutcome":
         config = self.settings
-        if not config.group_allowed(group_id) or not config.ai_enabled:
+        if not config.group_allowed(group_id) or not config.ai_configured:
             return ChatOutcome(await self.reply(group_id, prompt))
         if not config.ai_tools_enabled:
             return ChatOutcome(await self.reply(group_id, prompt))

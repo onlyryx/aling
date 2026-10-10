@@ -10,15 +10,17 @@ async def test_feature_requires_group_opt_in_within_global_allowance(tmp_path):
     settings = Settings(
         _env_file=None,
         onebot_access_token="test",
-        web_enabled=True,
         allowed_groups={34},
+        superusers={99},
     )
     store = GroupSettingsStore(tmp_path / "settings.db")
     await store.initialize()
     features = FeatureService(settings, store)
+    await features.initialize()
 
     assert not await features.enabled(34, "web")
     assert not await features.enabled(56, "web")
+    await features.set_global(99, "web", True)
     await features.set(PermissionContext(12, 34, "admin"), "web", True)
     assert await features.enabled(34, "web")
     await features.set(PermissionContext(12, 34, "admin"), "web", False)
@@ -41,11 +43,10 @@ async def test_feature_setting_requires_admin_and_cannot_enable_global_off(tmp_p
     assert not await features.enabled(34, "web")
 
 
-async def test_deployer_can_toggle_persistent_global_gate_but_not_exceed_env(tmp_path):
+async def test_superuser_can_toggle_persistent_global_gate_without_env_ceiling(tmp_path):
     settings = Settings(
         _env_file=None,
         onebot_access_token="test",
-        web_enabled=True,
         superusers={99},
     )
     store = GroupSettingsStore(tmp_path / "settings.db")
@@ -53,7 +54,7 @@ async def test_deployer_can_toggle_persistent_global_gate_but_not_exceed_env(tmp
     features = FeatureService(settings, store)
     await features.initialize()
 
-    assert features.globally_enabled("web")
+    assert not features.globally_enabled("web")
     with pytest.raises(PermissionError):
         await features.set_global(12, "web", False)
     await features.set_global(99, "web", False)
@@ -65,23 +66,38 @@ async def test_deployer_can_toggle_persistent_global_gate_but_not_exceed_env(tmp
     await restarted.set_global(99, "web", True)
     assert restarted.globally_enabled("web")
 
-    settings.web_enabled = False
-    await store.set_global_feature_enabled("web", True)
-    capped = FeatureService(settings, store)
-    await capped.initialize()
-    assert not capped.globally_enabled("web")
-    with pytest.raises(FeatureDisabledError):
-        await capped.set_global(99, "web", True)
+    await restarted.set_global(99, "meme", True)
+    assert restarted.globally_enabled("meme")
 
 
-async def test_memory_feature_requires_global_ai_and_memory_opt_in(tmp_path):
+async def test_ai_global_toggle_requires_credentials_but_not_legacy_env_switch(tmp_path):
+    settings = Settings(_env_file=None, onebot_access_token="test", superusers={12})
+    store = GroupSettingsStore(tmp_path / "settings.db")
+    await store.initialize()
+    features = FeatureService(settings, store)
+    await features.initialize()
+
+    with pytest.raises(FeatureDisabledError, match="AI_API_KEY.*AI_MODEL"):
+        await features.set_global(12, "ai", True)
+    with pytest.raises(FeatureDisabledError, match="AI_API_KEY.*AI_MODEL"):
+        await features.set_global(12, "memory", True)
+
+    settings.ai_api_key = "fake-test-key"
+    settings.ai_model = "test-model"
+    with pytest.raises(FeatureDisabledError, match="global AI switch"):
+        await features.set_global(12, "memory", True)
+    await features.set_global(12, "ai", True)
+    assert features.globally_enabled("ai")
+    await features.set_global(12, "memory", True)
+    assert features.globally_enabled("memory")
+
+
+async def test_memory_feature_needs_global_ai_and_group_opt_in_only(tmp_path):
     settings = Settings(
         _env_file=None,
         onebot_access_token="test",
-        ai_enabled=True,
         ai_api_key="fake-test-key",
         ai_model="test-model",
-        ai_memory_enabled=True,
         allowed_groups={34},
         superusers={12},
     )
@@ -89,8 +105,11 @@ async def test_memory_feature_requires_global_ai_and_memory_opt_in(tmp_path):
     await store.initialize()
     features = FeatureService(settings, store)
     context = PermissionContext(12, 34, "admin")
+    await features.initialize()
 
     assert not await features.enabled(34, "memory")
+    await features.set_global(12, "ai", True)
+    await features.set_global(12, "memory", True)
     await features.set(context, "memory", True)
     assert not await features.enabled(34, "memory")
     await features.set(context, "ai", True)
@@ -100,5 +119,3 @@ async def test_memory_feature_requires_global_ai_and_memory_opt_in(tmp_path):
     assert not await features.enabled(34, "memory")
     await features.set_global(12, "ai", True)
     assert await features.enabled(34, "memory")
-    settings.ai_memory_enabled = False
-    assert not await features.enabled(34, "memory")

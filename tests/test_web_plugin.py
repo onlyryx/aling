@@ -57,7 +57,7 @@ async def test_web_summary_is_optional_falls_back_and_marks_model_usage():
     chat = FakeChat()
     try:
         result = await WebReadService(
-            settings(ai_enabled=True, ai_api_key="fake", ai_model="test"), client, chat
+            settings(ai_api_key="fake", ai_model="test"), client, chat
         ).read("https://example.org", group_id=34, summarize=True, ai_enabled=True)
     finally:
         await client.aclose()

@@ -20,7 +20,6 @@ class Settings(BaseSettings):
     database_path: Path = Path("data/ryxbot.db")
     extra_plugins: list[str] = Field(default_factory=list)
 
-    ai_enabled: bool = False
     ai_api_key: SecretStr = SecretStr("")
     ai_base_url: str = "https://api.openai.com/v1"
     ai_model: str = ""
@@ -44,10 +43,7 @@ class Settings(BaseSettings):
     proactive_timezone: str = "Asia/Shanghai"
     proactive_quiet_start: time = time(23, 0)
     proactive_quiet_end: time = time(8, 0)
-    web_enabled: bool = False
-    meme_enabled: bool = False
     ai_tools_enabled: bool = False
-    ai_memory_enabled: bool = False
     ai_tool_timeout: float = Field(default=10, gt=0, le=30)
     ai_tool_turn_timeout: float = Field(default=45, gt=0, le=120)
     ai_session_ttl: int = Field(default=600, ge=60, le=3600)
@@ -104,13 +100,14 @@ class Settings(BaseSettings):
             raise ValueError("Expected an HTTP(S) API base URL without credentials/query/fragment")
         return value.rstrip("/")
 
-    @model_validator(mode="after")
-    def enabled_ai_requires_credentials(self) -> "Settings":
-        if self.ai_enabled and (
-            not self.ai_api_key.get_secret_value().strip() or not self.ai_model.strip()
-        ):
-            raise ValueError("AI_ENABLED requires AI_API_KEY and AI_MODEL")
-        return self
+    @property
+    def ai_configured(self) -> bool:
+        api_key = (
+            self.ai_api_key.get_secret_value()
+            if isinstance(self.ai_api_key, SecretStr)
+            else str(self.ai_api_key)
+        )
+        return bool(api_key.strip() and self.ai_model.strip())
 
     def group_allowed(self, group_id: int) -> bool:
         return not self.allowed_groups or group_id in self.allowed_groups

@@ -4,7 +4,7 @@ from aling.core.storage import FEATURES, GroupSettingsStore
 
 
 class FeatureDisabledError(ValueError):
-    """Raised when a group tries to enable a deployment-disabled capability."""
+    """Raised when an unavailable or globally disabled feature is enabled."""
 
 
 class FeatureService:
@@ -19,15 +19,10 @@ class FeatureService:
     def globally_enabled(self, feature: str) -> bool:
         if feature not in FEATURES:
             raise ValueError("Unknown feature")
-        configured = {
-            "ai": self.settings.ai_enabled,
-            "web": self.settings.web_enabled,
-            "meme": self.settings.meme_enabled,
-            "memory": self.settings.ai_enabled and self.settings.ai_memory_enabled,
-        }[feature]
+        configured = feature not in {"ai", "memory"} or self.settings.ai_configured
         return (
             configured
-            and self._global_overrides.get(feature, True)
+            and self._global_overrides.get(feature, False)
             and (feature != "memory" or self.globally_enabled("ai"))
         )
 
@@ -50,7 +45,7 @@ class FeatureService:
             raise ValueError("Unknown feature")
         require_group_admin(context, self.settings.superusers, self.settings.allowed_groups)
         if enabled and not self.globally_enabled(feature):
-            raise FeatureDisabledError("Feature disabled by deployment configuration")
+            raise FeatureDisabledError("Global feature switch is off")
         await self.store.set_feature_enabled(context.group_id, feature, enabled)
 
     async def set_global(self, user_id: int, feature: str, enabled: bool) -> None:
@@ -60,13 +55,11 @@ class FeatureService:
             raise ValueError("Unknown feature")
         if type(enabled) is not bool:
             raise ValueError("Feature state must be boolean")
-        configured = {
-            "ai": self.settings.ai_enabled,
-            "web": self.settings.web_enabled,
-            "meme": self.settings.meme_enabled,
-            "memory": self.settings.ai_enabled and self.settings.ai_memory_enabled,
-        }[feature]
-        if enabled and not configured:
-            raise FeatureDisabledError("Feature disabled by deployment configuration")
+        if enabled and feature in {"ai", "memory"} and not self.settings.ai_configured:
+            raise FeatureDisabledError(
+                "AI_API_KEY and AI_MODEL must be configured before enabling AI"
+            )
+        if enabled and feature == "memory" and not self.globally_enabled("ai"):
+            raise FeatureDisabledError("Enable the global AI switch before enabling memory")
         await self.store.set_global_feature_enabled(feature, enabled)
         self._global_overrides[feature] = enabled
