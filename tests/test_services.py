@@ -24,9 +24,7 @@ async def test_ai_sends_only_current_prompt_and_bounds_text_output():
         requests.append(request)
         return httpx.Response(200, json={"choices": [{"message": {"content": "abcdefghij"}}]})
 
-    config = settings(
-        ai_enabled=True, ai_api_key="fake", ai_model="test-model", ai_max_output_chars=5
-    )
+    config = settings(ai_api_key="fake", ai_model="test-model", ai_max_output_chars=5)
     client = OpenAIClient(config, transport=httpx.MockTransport(endpoint))
     try:
         service = ChatService(config, client)
@@ -57,7 +55,7 @@ async def test_ai_provider_failures_return_safe_user_message(failure):
             return httpx.Response(200, json={"choices": [{"message": {"content": " "}}]})
         return httpx.Response(200, content=b"x" * 1_000_001)
 
-    config = settings(ai_enabled=True, ai_api_key="fake", ai_model="test")
+    config = settings(ai_api_key="fake", ai_model="test")
     client = OpenAIClient(config, transport=httpx.MockTransport(endpoint))
     try:
         answer = await ChatService(config, client).reply(34, "private prompt")
@@ -75,7 +73,8 @@ async def test_disabled_oversize_out_of_scope_ai_never_calls_provider():
     client = OpenAIClient(config, transport=httpx.MockTransport(forbidden))
     try:
         assert "未启用" in await ChatService(config, client).reply(34, "hello")
-        config.ai_enabled = True
+        config.ai_api_key = "fake-key"
+        config.ai_model = "test-model"
         service = ChatService(config, client)
         assert "过长" in await service.reply(34, "x" * 2001)
         assert "未开放" in await service.reply(56, "hello")
@@ -88,9 +87,7 @@ async def test_ai_concurrency_and_total_deadline():
         await asyncio.sleep(0.1)
         return httpx.Response(200, json={"choices": [{"message": {"content": "reply"}}]})
 
-    config = settings(
-        ai_enabled=True, ai_api_key="fake", ai_model="test", ai_timeout=0.02, ai_max_concurrency=1
-    )
+    config = settings(ai_api_key="fake", ai_model="test", ai_timeout=0.02, ai_max_concurrency=1)
     client = OpenAIClient(config, transport=httpx.MockTransport(slow_endpoint))
     try:
         service = ChatService(config, client)
@@ -114,7 +111,7 @@ async def test_ai_rejects_raw_compressed_response_without_decoding():
     def endpoint(request):
         return httpx.Response(200, headers={"content-encoding": "gzip"}, stream=CompressedBody())
 
-    config = settings(ai_enabled=True, ai_api_key="fake", ai_model="test")
+    config = settings(ai_api_key="fake", ai_model="test")
     client = OpenAIClient(config, transport=httpx.MockTransport(endpoint))
     try:
         with pytest.raises(ValueError, match="Compressed"):

@@ -15,13 +15,15 @@ async def test_tool_registry_is_explicit_read_only_allowlist(tmp_path):
     settings = Settings(
         _env_file=None,
         onebot_access_token="test",
-        web_enabled=True,
-        meme_enabled=True,
         allowed_groups={34},
+        superusers={12},
     )
     store = GroupSettingsStore(tmp_path / "settings.db")
     await store.initialize()
     features = FeatureService(settings, store)
+    await features.initialize()
+    await features.set_global(12, "web", True)
+    await features.set_global(12, "meme", True)
 
     class FakeWeb:
         async def read(self, url, *, group_id, summarize=False, ai_enabled=False):
@@ -43,7 +45,7 @@ async def test_tool_registry_is_explicit_read_only_allowlist(tmp_path):
 
 
 async def test_tool_registry_rejects_extra_arguments_and_disabled_groups(tmp_path):
-    settings = Settings(_env_file=None, onebot_access_token="test", web_enabled=True)
+    settings = Settings(_env_file=None, onebot_access_token="test")
     store = GroupSettingsStore(tmp_path / "settings.db")
     await store.initialize()
     features = FeatureService(settings, store)
@@ -62,12 +64,14 @@ async def test_tool_registry_returns_failure_not_success_on_timeout(tmp_path):
     settings = Settings(
         _env_file=None,
         onebot_access_token="test",
-        web_enabled=True,
         allowed_groups={34},
+        superusers={12},
     )
     store = GroupSettingsStore(tmp_path / "settings.db")
     await store.initialize()
     features = FeatureService(settings, store)
+    await features.initialize()
+    await features.set_global(12, "web", True)
     await features.set(PermissionContext(12, 34, "admin"), "web", True)
 
     class SlowWeb:
@@ -91,7 +95,6 @@ async def test_ai_executes_at_most_two_validated_tools_and_never_system_calls():
     settings = Settings(
         _env_file=None,
         onebot_access_token="test",
-        ai_enabled=True,
         ai_api_key="fake",
         ai_model="test",
         ai_tools_enabled=True,
@@ -152,7 +155,6 @@ async def test_unsupported_tool_provider_falls_back_to_single_turn_chat():
     settings = Settings(
         _env_file=None,
         onebot_access_token="test",
-        ai_enabled=True,
         ai_api_key="fake",
         ai_model="test",
         ai_tools_enabled=True,
@@ -202,7 +204,6 @@ async def test_malformed_tool_provider_response_fails_safely(message):
     options = Settings(
         _env_file=None,
         onebot_access_token="test",
-        ai_enabled=True,
         ai_api_key="fake",
         ai_model="test",
         ai_tools_enabled=True,
@@ -226,12 +227,14 @@ async def test_malformed_tool_provider_response_fails_safely(message):
 
 
 async def test_model_tools_are_filtered_by_current_group_features(tmp_path):
-    options = Settings(_env_file=None, onebot_access_token="test", web_enabled=True)
+    options = Settings(_env_file=None, onebot_access_token="test", superusers={12})
     store = GroupSettingsStore(tmp_path / "tools.db")
     await store.initialize()
     features = FeatureService(options, store)
+    await features.initialize()
     tools = ToolRegistry(features, object(), object())
     assert await tools.definitions_for(34) == []
+    await features.set_global(12, "web", True)
     await features.set(PermissionContext(12, 34, "admin"), "web", True)
     assert [d["function"]["name"] for d in await tools.definitions_for(34)] == ["web_read"]
 
@@ -240,7 +243,6 @@ async def test_no_available_tools_uses_plain_chat_with_history():
     options = Settings(
         _env_file=None,
         onebot_access_token="test",
-        ai_enabled=True,
         ai_api_key="fake",
         ai_model="test",
         ai_tools_enabled=True,
@@ -265,7 +267,6 @@ async def test_malformed_tool_followup_is_a_safe_failure():
     options = Settings(
         _env_file=None,
         onebot_access_token="test",
-        ai_enabled=True,
         ai_api_key="fake",
         ai_model="test",
         ai_tools_enabled=True,

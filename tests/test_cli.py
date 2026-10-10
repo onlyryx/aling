@@ -14,7 +14,6 @@ def environment(tmp_path):
     return dict(
         os.environ,
         ONEBOT_ACCESS_TOKEN="local-test-token",
-        AI_ENABLED="false",
         AI_API_KEY="",
         LOG_LEVEL="DEBUG",
         HOST="127.0.0.1",
@@ -113,8 +112,11 @@ def test_doctor_checks_configuration_offline_and_hides_token(tmp_path):
     assert "DO_NOT_PRINT_ME" not in result.stdout + result.stderr
 
 
-def test_doctor_rejects_invalid_config_without_starting_server(tmp_path):
-    env = dict(environment(tmp_path), AI_ENABLED="true", AI_API_KEY="DO_NOT_PRINT_ME")
+def test_doctor_ignores_legacy_ai_enabled_flag_without_credentials(tmp_path):
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    env = dict(environment(tmp_path), AI_ENABLED="true", AI_API_KEY="", PORT=str(port))
     result = subprocess.run(
         [sys.executable, "-m", "aling.app", "doctor"],
         cwd=tmp_path,
@@ -123,9 +125,8 @@ def test_doctor_rejects_invalid_config_without_starting_server(tmp_path):
         text=True,
         timeout=10,
     )
-    assert result.returncode == 1
-    assert "配置：失败" in result.stdout
-    assert "DO_NOT_PRINT_ME" not in result.stdout + result.stderr
+    assert result.returncode == 0
+    assert "配置：通过" in result.stdout
 
 
 @pytest.mark.parametrize("args, expected", [(["--help"], 0), (["--version"], 0), (["typo"], 2)])
@@ -144,4 +145,4 @@ def test_cli_arguments_do_not_start_server_or_read_config(tmp_path, args, expect
     assert "Invalid configuration" not in result.stderr
     assert not (tmp_path / "settings.db").exists()
     if args == ["--version"]:
-        assert "0.3.0" in result.stdout
+        assert "0.3.1" in result.stdout

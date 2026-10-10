@@ -177,10 +177,8 @@ async def feature_handler(event: MessageEvent, args: Annotated[Message, CommandA
             await runtime.features.set_global(event.user_id, parts[1], parts[2] == "on")
             if parts[1] in {"ai", "memory"} and parts[2] == "off":
                 await runtime.sessions.clear()
-        except FeatureDisabledError:
-            await feature_command.finish(
-                MessageSegment.text("此功能未获部署配置许可；请先配置对应的 .env 开关并重启。")
-            )
+        except FeatureDisabledError as exc:
+            await feature_command.finish(MessageSegment.text(str(exc)))
         except Exception as exc:
             log.error("Global feature update failed ({})", type(exc).__name__)
             await feature_command.finish(MessageSegment.text("设置暂时无法保存，请稍后再试。"))
@@ -208,7 +206,7 @@ async def feature_handler(event: MessageEvent, args: Annotated[Message, CommandA
             event.group_id, "memory"
         ):
             if not runtime.features.globally_enabled("memory"):
-                raise FeatureDisabledError("Feature disabled by deployment configuration")
+                raise FeatureDisabledError("Global memory switch is off")
             _set_memory_confirmation((event.group_id, event.user_id))
             await feature_command.finish(
                 MessageSegment.text(
@@ -240,7 +238,7 @@ async def feature_handler(event: MessageEvent, args: Annotated[Message, CommandA
     except FeatureDisabledError:
         await feature_command.finish(
             MessageSegment.text(
-                f"此功能尚未由部署者启用；请检查 .env 能力配置与 /feature global {parts[0]} on。"
+                f"此功能尚未由超级用户开启；请先运行 /feature global {parts[0]} on。"
             )
         )
     status = "关闭" if parts[1] == "off" else "开启"

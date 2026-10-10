@@ -19,7 +19,7 @@
 
 | 验收范围 | 当前证据 |
 | --- | --- |
-| 环境能力上限、持久化全局开关、群默认关闭与超级用户权限 | `test_features.py`、`test_storage_migrations.py`、带认证的 OneBot 集成测试 |
+| 持久化全局开关默认关闭、AI 凭据校验、群默认关闭与超级用户权限 | `test_features.py`、`test_storage_migrations.py`、带认证的 OneBot 集成测试 |
 | `/help`、`/ping`、维护者 `/status`、未知指令与私聊全局命令 | `test_help.py`、`test_status.py`、`test_integration.py` |
 | 网页超时、SSRF、限长、正文提取与摘要回退 | `test_services.py`、`test_web_plugin.py` |
 | 本地图片目录边界、有界读取、解码验证与发送失败反馈 | `test_memes.py`、`test_integration.py` |

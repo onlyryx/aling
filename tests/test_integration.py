@@ -72,14 +72,10 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
         onebot_access_token="test-secret",
         database_path=tmp_path / "settings.db",
         superusers={12},
-        ai_enabled=True,
         ai_api_key="fake-key",
         ai_model="test-model",
-        ai_memory_enabled=True,
         ai_cooldown_seconds=0,
         allowed_groups={34},
-        meme_enabled=True,
-        web_enabled=True,
         extra_plugins=["docs.plugins.example_plugin"],
         meme_dir=meme_dir,
     )
@@ -200,15 +196,17 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
             global_off = exchange(event("/feature global web off", user=12))[0]["data"]["text"]
             assert "全局" in global_off and "关闭" in global_off
             blocked_group_on = exchange(event("/feature web on", role="admin"))[0]["data"]["text"]
-            assert "部署者" in blocked_group_on
+            assert "超级用户" in blocked_group_on
             private_global = event("/feature global web on", user=12)
             private_global.update(message_type="private", sub_type="friend")
             private_global.pop("group_id")
             global_on = exchange(private_global)[0]["data"]["text"]
             assert "全局" in global_on and "开启" in global_on
             assert "开启" in exchange(event("/feature web on", role="admin"))[0]["data"]["text"]
+            exchange(event("/feature global ai on"))
             assert "开启" in exchange(event("/feature ai on", role="admin"))[0]["data"]["text"]
             assert "示例插件已加载" in exchange(event("/example", role="admin"))[0]["data"]["text"]
+            exchange(event("/feature global meme on"))
             assert "开启" in exchange(event("/feature meme on", role="admin"))[0]["data"]["text"]
             meme = exchange(event("/meme hello"))
             assert [segment["type"] for segment in meme] == ["text", "image"]
@@ -244,6 +242,7 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
             assert reply == [{"type": "text", "data": {"text": "hello [CQ:at,qq=all]"}}]
             assert "暂时" in exchange(event("error please", mention=True))[0]["data"]["text"]
             assert prompts == ["my question", "error please"]
+            exchange(event("/feature global memory on"))
             warning = exchange(event("/feature memory on", role="admin"))[0]["data"]["text"]
             assert "发送给模型服务" in warning
             assert (

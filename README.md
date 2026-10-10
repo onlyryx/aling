@@ -7,7 +7,7 @@
 
 源码与问题反馈：[GitHub 仓库](https://github.com/onlyryx/aling)。
 
-项目版本：**0.3.0（发布候选，尚未发布）**。使用 Python 3.12+、NoneBot2、OneBot V11、NapCatQQ、SQLite、
+项目版本：**0.3.1（修复版）**。使用 Python 3.12+、NoneBot2、OneBot V11、NapCatQQ、SQLite、
 httpx、BeautifulSoup 与 Pillow，采用 `plugins → services → core` 分层，保留
 NoneBot 原生插件加载方式。许可证：MIT。
 
@@ -48,10 +48,10 @@ cp .env.example .env
 uv run python -c 'import secrets; print(secrets.token_urlsafe(32))'
 ```
 
-只使用指令时保留 `AI_ENABLED=false`。启用聊天还需设置：
+配置模型服务后，超级用户可以通过 `/feature global ai on` 开启 AI；API 凭据不完整时
+阿零会拒绝开启。需设置：
 
 ```dotenv
-AI_ENABLED=true
 AI_API_KEY=你自己的模型服务密钥
 AI_BASE_URL=https://你的模型服务地址/v1
 AI_MODEL=服务商支持的模型标识
@@ -65,27 +65,25 @@ AI_MODEL=服务商支持的模型标识
 
 ## 启用可选功能
 
-`.env` 中的功能开关是部署者授予的能力上限，默认关闭。具备 `SUPERUSERS` 权限的部署者可用
-`/feature global <功能> on|off` 即时切换运行时全局开关，状态保存在 SQLite 中并跨重启保留；
-运行时命令不能突破 `.env` 上限。全局允许后，每个群仍默认关闭，群主/管理员（或配置的超级用户）
-还需在允许的群内显式设置群开关：
+可选功能的全局开关默认关闭。具备 `SUPERUSERS` 权限的部署者可用
+`/feature global <功能> on|off` 即时切换，并写入 SQLite 持久保存；除 AI 外，网页阅读和本地表情包
+不需要额外 `.env` 功能许可。AI 与短期会话要求配置 `AI_API_KEY`、`AI_MODEL`。全局开启后，每个群
+仍默认关闭，群主/管理员（或配置的超级用户）还需在允许的群内显式设置群开关。全局命令可在私聊
+或允许的群内使用，普通群管理员没有此权限。
 
-未设置运行时覆盖时，全局开关沿用 `.env` 的许可值；曾用命令关闭的功能，需要再次运行
-`/feature global <功能> on` 恢复。全局命令可在私聊或允许的群内使用，普通群管理员没有此权限。
-
-| 能力 | 部署者开关 | 群内操作 |
+| 能力 | 全局开关 | 群内操作 |
 | --- | --- | --- |
-| AI 聊天 | `AI_ENABLED=true` 并配置模型服务 | `/feature ai on` |
-| 网页阅读 | `WEB_ENABLED=true` | `/feature web on` |
-| 本地表情包 | `MEME_ENABLED=true` 并配置素材清单 | `/feature meme on` |
+| AI 聊天 | `/feature global ai on`（需模型凭据） | `/feature ai on` |
+| 网页阅读 | `/feature global web on` | `/feature web on` |
+| 本地表情包 | `/feature global meme on` 并配置素材清单 | `/feature meme on` |
 | AI 工具选择 | `AI_TOOLS_ENABLED=true`，且启用 AI 与对应网页/表情包功能 | 使用明确 @ 提问；模型供应商需支持工具调用 |
-| 短期会话 | `AI_ENABLED=true`、`AI_MEMORY_ENABLED=true` | `/feature memory on` 阅读数据说明，再 `/feature memory confirm` |
+| 短期会话 | `/feature global ai on`、`/feature global memory on` | `/feature memory on` 阅读数据说明，再 `/feature memory confirm` |
 | 定时主动消息 | `PROACTIVE_ENABLED=true` | `/proactive on` 并配置 `/proactive schedule HH:MM <文本>` |
 
 `/feature memory on` 的说明必须由群管理员先阅读；确认后，同一用户在该群明确 @ 的近期问题和
 回复会随新问题发送给模型服务。使用 `/forget` 清除个人会话，管理员运行 `/feature memory off`
 会清除整群的短期会话缓存。关闭本群 AI 同样会清理本群缓存；全局关闭 AI 或记忆则清理全部缓存，
-正在处理的旧回复不会重新写入已清除的会话。群内开关不能覆盖运行时全局开关或 `.env` 能力上限。
+正在处理的旧回复不会重新写入已清除的会话。群内开关不能覆盖运行时全局开关。
 `AI_TOOLS_ENABLED` 和 `PROACTIVE_ENABLED` 仍仅通过部署配置调整，不属于 `/feature global` 命令。
 
 ```sh
@@ -96,7 +94,8 @@ uv run --frozen aling --version
 # 不使用 uv：python -m aling.app
 ```
 
-缺少令牌或启用了 AI 却缺少模型配置时，程序退出并只提示错误配置项。
+缺少 OneBot 令牌时程序退出并只提示错误配置项；模型配置不完整时 bot 仍可运行，
+但超级用户无法开启 AI 功能。
 启动只监听本机，不主动登录或连接 QQ。环境变量优先于 `.env`；改配置后重启。
 `GET http://127.0.0.1:8080/health` 检查进程存活；`GET http://127.0.0.1:8080/ready`
 只有 OneBot 已连接时返回就绪。Compose 只用 `/health`，NapCat 不必等待 QQ 登录成功才启动。

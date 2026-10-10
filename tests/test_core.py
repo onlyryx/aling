@@ -9,11 +9,11 @@ from aling.core.rate_limit import RateLimiter
 from aling.core.storage import GroupSettingsStore
 
 
-def test_configuration_rejects_missing_token_and_incomplete_ai():
+def test_configuration_rejects_missing_token_but_allows_ai_to_be_configured_later():
     with pytest.raises(ValidationError):
         Settings(_env_file=None, onebot_access_token="  ")
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None, onebot_access_token="test", ai_enabled=True)
+    settings = Settings(_env_file=None, onebot_access_token="test", ai_enabled=True)
+    assert not settings.ai_configured
     with pytest.raises(ValidationError):
         Settings(_env_file=None, onebot_access_token="test", ai_timeout=0)
     settings = Settings(_env_file=None, onebot_access_token="test", ai_api_key="secret-test")
@@ -24,10 +24,8 @@ def test_configuration_rejects_missing_token_and_incomplete_ai():
 def test_new_features_default_closed_and_timezone_defaults_to_china():
     settings = Settings(_env_file=None, onebot_access_token="test")
 
-    assert settings.web_enabled is False
-    assert settings.meme_enabled is False
     assert settings.ai_tools_enabled is False
-    assert settings.ai_memory_enabled is False
+    assert settings.ai_configured is False
     assert settings.proactive_timezone == "Asia/Shanghai"
     assert settings.proactive_quiet_start.isoformat(timespec="minutes") == "23:00"
     assert settings.proactive_quiet_end.isoformat(timespec="minutes") == "08:00"

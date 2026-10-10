@@ -144,7 +144,7 @@ class WebReadService:
         parts = urlsplit(page.url)
         source = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))[:500]
         excerpt = page.text[:1200] or "网页没有提取到可读正文。"
-        if summarize and ai_enabled and self.settings.ai_enabled and self.chat:
+        if summarize and ai_enabled and self.settings.ai_configured and self.chat:
             budget = max(0, min(6000, self.settings.ai_max_input_chars - 180))
             if budget:
                 prompt = (
