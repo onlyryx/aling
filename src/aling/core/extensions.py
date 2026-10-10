@@ -6,7 +6,7 @@ from aling.core.permissions import PermissionContext
 
 @dataclass(frozen=True)
 class MemeResult:
-    url: str
+    resource_id: str
     description: str
 
 
@@ -18,7 +18,7 @@ class WebPage:
 
 
 class MemeProvider(Protocol):
-    """Provider URL results still need SafeWebClient validation before downloading."""
+    """Return opaque validated resource IDs; never let a user choose a file path."""
 
     async def search(self, query: str, *, limit: int = 3) -> list[MemeResult]: ...
 

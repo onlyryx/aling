@@ -1,0 +1,58 @@
+from nonebot.plugin import PluginMetadata
+
+from aling.services.help import render_help
+
+
+def test_help_renders_loaded_plugin_usage_and_hides_disabled_capabilities():
+    plugins = [
+        type(
+            "Plugin",
+            (),
+            {"metadata": PluginMetadata(name="base", description="", usage="/ping")},
+        )(),
+        type(
+            "Plugin",
+            (),
+            {
+                "metadata": PluginMetadata(
+                    name="web",
+                    description="",
+                    usage="/read URL",
+                    extra={"aling_feature": "web"},
+                )
+            },
+        )(),
+        type(
+            "Plugin",
+            (),
+            {
+                "metadata": PluginMetadata(
+                    name="meme",
+                    description="",
+                    usage="/meme query",
+                    extra={"aling_feature": "meme"},
+                )
+            },
+        )(),
+    ]
+
+    text = render_help(plugins, {"meme"})
+
+    assert "/ping" in text
+    assert "/meme query" in text
+    assert "/read URL" not in text
+    assert "/forget" not in text
+    assert "阿零（ALING）" in text
+
+
+def test_help_shows_forget_only_when_group_memory_is_enabled():
+    plugin = type(
+        "Plugin",
+        (),
+        {"metadata": PluginMetadata(name="base", description="", usage="/ping")},
+    )()
+
+    text = render_help([plugin], {"memory"})
+
+    assert "/forget" in text
+    assert "不保存普通聊天" in text

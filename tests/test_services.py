@@ -9,7 +9,7 @@ from aling.core.config import Settings
 from aling.core.permissions import PermissionContext
 from aling.core.storage import GroupSettingsStore
 from aling.services.ai import ChatService, OpenAIClient
-from aling.services.proactive import ProactiveSender
+from aling.services.proactive import ProactiveSender, send_group_text
 from aling.services.web import SafeWebClient, UnsafeURL
 
 
@@ -229,6 +229,18 @@ async def test_proactive_sender_requires_permission_opt_in_and_cooldown(tmp_path
     await sender.set_enabled(PermissionContext(12, 34, "admin"), False)
     assert not await sender.send(34, "disabled", send)
     assert sent == [(34, "hello")]
+
+
+async def test_scheduled_text_is_sent_as_plain_text_not_cq_code():
+    class FakeBot:
+        async def call_api(self, action, **kwargs):
+            assert action == "send_group_msg"
+            assert kwargs["group_id"] == 34
+            assert len(kwargs["message"]) == 1
+            assert kwargs["message"][0].type == "text"
+            assert kwargs["message"][0].data["text"] == "hello [CQ:at,qq=all]"
+
+    await send_group_text(FakeBot(), 34, "hello [CQ:at,qq=all]")
 
 
 async def test_web_rejects_compression_before_decoding_and_parser_omits_scripts():

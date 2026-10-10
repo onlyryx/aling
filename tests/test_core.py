@@ -21,6 +21,26 @@ def test_configuration_rejects_missing_token_and_incomplete_ai():
     assert settings.proactive_enabled is False
 
 
+def test_new_features_default_closed_and_timezone_defaults_to_china():
+    settings = Settings(_env_file=None, onebot_access_token="test")
+
+    assert settings.web_enabled is False
+    assert settings.meme_enabled is False
+    assert settings.ai_tools_enabled is False
+    assert settings.ai_memory_enabled is False
+    assert settings.proactive_timezone == "Asia/Shanghai"
+    assert settings.proactive_quiet_start.isoformat(timespec="minutes") == "23:00"
+    assert settings.proactive_quiet_end.isoformat(timespec="minutes") == "08:00"
+    assert settings.proactive_max_per_day == 1
+
+
+def test_scheduler_rejects_unknown_timezone_and_invalid_daily_limit():
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, onebot_access_token="test", proactive_timezone="Mars/Olympus")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, onebot_access_token="test", proactive_max_per_day=0)
+
+
 @pytest.mark.parametrize("role", ["owner", "admin"])
 def test_group_admin_and_superuser_authorization(role):
     require_group_admin(PermissionContext(12, 34, role), set(), set())
@@ -77,7 +97,11 @@ async def test_sqlite_persists_only_group_preferences(tmp_path):
     await reopened.set_proactive_enabled(34, False)
     assert not await store.is_proactive_enabled(34)
     with sqlite3.connect(path) as conn:
-        assert conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall() == [
-            ("group_settings",)
-        ]
         assert conn.execute("SELECT * FROM group_settings").fetchall() == [(34, 0)]
+        tables = {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        assert "group_settings" in tables
+        assert "schema_version" in tables
+        assert "group_feature_settings" in tables
+        assert "proactive_schedules" in tables

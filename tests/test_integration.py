@@ -5,11 +5,14 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from nonebot.log import logger
+from PIL import Image
 from starlette.websockets import WebSocketDisconnect
 
 from aling.app import build_app
 from aling.core.config import Settings
 from aling.core.logging import configure_logging
+from aling.runtime import get_runtime
+from aling.services.ai import ChatOutcome
 
 
 def event(text, *, role="member", mention=False, user=12, group=34):
@@ -32,11 +35,15 @@ def event(text, *, role="member", mention=False, user=12, group=34):
     }
 
 
-def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_path):
+def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_path, monkeypatch):
+    monkeypatch.setenv("ALING_EXAMPLE_ENABLED", "true")
     prompts = []
+    model_messages = []
 
     def model(request):
-        prompt = json.loads(request.content)["messages"][1]["content"]
+        messages = json.loads(request.content)["messages"]
+        model_messages.append(messages)
+        prompt = messages[-1]["content"]
         prompts.append(prompt)
         if prompt == "error please":
             return httpx.Response(500, text="sensitive provider response")
@@ -44,19 +51,46 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
             200, json={"choices": [{"message": {"content": "hello [CQ:at,qq=all]"}}]}
         )
 
+    meme_dir = tmp_path / "memes"
+    meme_dir.mkdir()
+    Image.new("RGB", (2, 2), "red").save(meme_dir / "hello.png")
+    (meme_dir / "manifest.json").write_text(
+        json.dumps(
+            [
+                {
+                    "id": "hello",
+                    "description": "hello [CQ:at,qq=all]",
+                    "tags": ["hello"],
+                    "path": "hello.png",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
     config = Settings(
         _env_file=None,
         onebot_access_token="test-secret",
         database_path=tmp_path / "settings.db",
+        superusers={12},
         ai_enabled=True,
         ai_api_key="fake-key",
         ai_model="test-model",
+        ai_memory_enabled=True,
         ai_cooldown_seconds=0,
         allowed_groups={34},
+        meme_enabled=True,
+        web_enabled=True,
+        extra_plugins=["docs.plugins.example_plugin"],
+        meme_dir=meme_dir,
     )
     app = build_app(config, ai_transport=httpx.MockTransport(model))
     with TestClient(app) as client:
+        runtime = get_runtime()
+        expiry_task = runtime._session_expiry_task
+        assert expiry_task is not None and not expiry_task.done()
         assert client.get("/health").json() == {"status": "ok"}
+        assert client.get("/ready").status_code == 503
+
         with pytest.raises(WebSocketDisconnect):
             with client.websocket_connect("/onebot/v11/ws", headers={"X-Self-ID": "99"}):
                 pass
@@ -67,6 +101,7 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                 pass
         headers = {"X-Self-ID": "99", "Authorization": "Bearer test-secret"}
         with client.websocket_connect("/onebot/v11/ws", headers=headers) as ws:
+            assert client.get("/ready").json() == {"status": "ready"}
             # A subsequent /ping proves these preceding messages produced no reply.
             for ignored in [
                 event("ordinary private discussion"),
@@ -80,7 +115,10 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                 ws.send_json(payload)
                 request = ws.receive_json()
                 assert request["action"] == "send_msg"
-                assert request["params"]["group_id"] == 34
+                if payload["message_type"] == "group":
+                    assert request["params"]["group_id"] == 34
+                else:
+                    assert request["params"]["user_id"] == payload["user_id"]
                 ws.send_json(
                     {
                         "status": "ok",
@@ -92,17 +130,173 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                 return request["params"]["message"]
 
             assert exchange(event("/ping"))[0]["data"]["text"] == "pong"
+            assert (
+                "超级用户" in exchange(event("/status", role="owner", user=13))[0]["data"]["text"]
+            )
+            ws.send_json(event("/status"))
+            status_request = ws.receive_json()
+            assert status_request["action"] == "get_status"
+            ws.send_json(
+                {
+                    "status": "ok",
+                    "retcode": 0,
+                    "data": {"online": False, "good": True},
+                    "echo": status_request["echo"],
+                }
+            )
+            status_reply = ws.receive_json()
+            assert "QQ 在线：否" in status_reply["params"]["message"][0]["data"]["text"]
+            ws.send_json(
+                {
+                    "status": "ok",
+                    "retcode": 0,
+                    "data": {"message_id": 2},
+                    "echo": status_reply["echo"],
+                }
+            )
+            mute = event("/mute", role="admin")
+            mute["message"] = [
+                {"type": "text", "data": {"text": "/mute "}},
+                {"type": "at", "data": {"qq": "23"}},
+            ]
+            ws.send_json(mute)
+            for expected_action, data in [
+                ("get_group_member_info", {"role": "admin"}),
+                ("get_group_member_info", {"role": "member"}),
+                ("set_group_ban", {}),
+                ("send_msg", {"message_id": 2}),
+            ]:
+                request = ws.receive_json()
+                assert request["action"] == expected_action
+                if expected_action == "set_group_ban":
+                    assert request["params"] == {
+                        "group_id": 34,
+                        "user_id": 23,
+                        "duration": 600,
+                    }
+                elif expected_action == "send_msg":
+                    assert request["params"]["message"][0]["data"]["text"] == (
+                        "已禁言成员 23，时长 10 分钟。"
+                    )
+                ws.send_json(
+                    {
+                        "status": "ok",
+                        "retcode": 0,
+                        "data": data,
+                        "echo": request["echo"],
+                    }
+                )
             help_text = exchange(event("/help"))[0]["data"]["text"]
             assert "/help" in help_text and "阿零（ALING）" in help_text
-            denied = exchange(event("/proactive on"))[0]["data"]["text"]
+            denied = exchange(event("/proactive on", user=13))[0]["data"]["text"]
             assert "管理员" in denied
+            assert "开启" in exchange(event("/proactive on"))[0]["data"]["text"]
             assert "开启" in exchange(event("/proactive on", role="admin"))[0]["data"]["text"]
             assert "关闭" in exchange(event("/proactive off", role="admin"))[0]["data"]["text"]
+            denied_global = exchange(event("/feature global web off", role="owner", user=13))[0][
+                "data"
+            ]["text"]
+            assert "超级用户" in denied_global
+            global_off = exchange(event("/feature global web off", user=12))[0]["data"]["text"]
+            assert "全局" in global_off and "关闭" in global_off
+            blocked_group_on = exchange(event("/feature web on", role="admin"))[0]["data"]["text"]
+            assert "部署者" in blocked_group_on
+            private_global = event("/feature global web on", user=12)
+            private_global.update(message_type="private", sub_type="friend")
+            private_global.pop("group_id")
+            global_on = exchange(private_global)[0]["data"]["text"]
+            assert "全局" in global_on and "开启" in global_on
+            assert "开启" in exchange(event("/feature web on", role="admin"))[0]["data"]["text"]
+            assert "开启" in exchange(event("/feature ai on", role="admin"))[0]["data"]["text"]
+            assert "示例插件已加载" in exchange(event("/example", role="admin"))[0]["data"]["text"]
+            assert "开启" in exchange(event("/feature meme on", role="admin"))[0]["data"]["text"]
+            meme = exchange(event("/meme hello"))
+            assert [segment["type"] for segment in meme] == ["text", "image"]
+            assert "[CQ:at,qq=all]" in meme[0]["data"]["text"]
+            assert meme[1]["data"]["file"].startswith("base64://")
+            from aling.plugins import meme as meme_plugin
+
+            monkeypatch.setattr(meme_plugin._limiter, "cooldown", 0)
+            ws.send_json(event("/meme hello"))
+            image_request = ws.receive_json()
+            assert image_request["params"]["message"][1]["type"] == "image"
+            ws.send_json(
+                {
+                    "status": "failed",
+                    "retcode": 100,
+                    "data": None,
+                    "message": "private adapter error",
+                    "echo": image_request["echo"],
+                }
+            )
+            fallback = ws.receive_json()
+            assert "图片发送失败" in fallback["params"]["message"][0]["data"]["text"]
+            ws.send_json(
+                {
+                    "status": "ok",
+                    "retcode": 0,
+                    "data": {"message_id": 2},
+                    "echo": fallback["echo"],
+                }
+            )
             assert exchange(event("/ping", mention=True))[0]["data"]["text"] == "pong"
             reply = exchange(event("my question", mention=True))
             assert reply == [{"type": "text", "data": {"text": "hello [CQ:at,qq=all]"}}]
             assert "暂时" in exchange(event("error please", mention=True))[0]["data"]["text"]
             assert prompts == ["my question", "error please"]
+            warning = exchange(event("/feature memory on", role="admin"))[0]["data"]["text"]
+            assert "发送给模型服务" in warning
+            assert (
+                "开启"
+                in exchange(event("/feature memory confirm", role="admin"))[0]["data"]["text"]
+            )
+            exchange(event("remember this", mention=True))
+            exchange(event("what did I ask?", mention=True))
+            assert [message["content"] for message in model_messages[-1]] == [
+                config.ai_system_prompt,
+                "remember this",
+                "hello [CQ:at,qq=all]",
+                "what did I ask?",
+            ]
+            assert "已清除" in exchange(event("/forget"))[0]["data"]["text"]
+            exchange(event("fresh question", mention=True))
+            assert len(model_messages[-1]) == 2
+            assert "关闭" in exchange(event("/feature global memory off"))[0]["data"]["text"]
+            assert "已清除" in exchange(event("/forget"))[0]["data"]["text"]
+            exchange(event("/feature global memory on"))
+            exchange(event("after global disable", mention=True))
+            assert len(model_messages[-1]) == 2
+            assert "/help" in exchange(event("/unknown-command"))[0]["data"]["text"]
+
+            async def selected_meme(*args, **kwargs):
+                return ChatOutcome("AI text survives an image failure", "hello")
+
+            monkeypatch.setattr(runtime.chat, "reply_with_tools", selected_meme)
+            monkeypatch.setattr(config, "ai_tools_enabled", True)
+            ws.send_json(event("send a meme", mention=True))
+            image_request = ws.receive_json()
+            assert image_request["params"]["message"][1]["type"] == "image"
+            ws.send_json(
+                {
+                    "status": "failed",
+                    "retcode": 100,
+                    "data": None,
+                    "echo": image_request["echo"],
+                }
+            )
+            fallback = ws.receive_json()
+            assert "AI text survives" in fallback["params"]["message"][0]["data"]["text"]
+            ws.send_json(
+                {
+                    "status": "ok",
+                    "retcode": 0,
+                    "data": {"message_id": 2},
+                    "echo": fallback["echo"],
+                }
+            )
+        assert client.get("/ready").status_code == 503
+    assert expiry_task.done() and runtime._session_expiry_task is None
+    assert not runtime.sessions._sessions
 
 
 def test_logging_omits_framework_message_content_and_exception_locals():
