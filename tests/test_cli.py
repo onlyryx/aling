@@ -7,6 +7,8 @@ import time
 import urllib.request
 from pathlib import Path
 
+import pytest
+
 
 def environment(tmp_path):
     return dict(
@@ -90,3 +92,56 @@ def test_cli_rejects_malformed_json_configuration_without_traceback(tmp_path):
     assert result.returncode == 2
     assert "Traceback" not in result.stderr
     assert "DO_NOT_PRINT_ME" not in result.stderr
+
+
+def test_doctor_checks_configuration_offline_and_hides_token(tmp_path):
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        free_port = sock.getsockname()[1]
+    env = dict(environment(tmp_path), ONEBOT_ACCESS_TOKEN="DO_NOT_PRINT_ME", PORT=str(free_port))
+    result = subprocess.run(
+        [sys.executable, "-m", "aling.app", "doctor"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "配置：通过" in result.stdout
+    assert "数据目录：可写" in result.stdout
+    assert "DO_NOT_PRINT_ME" not in result.stdout + result.stderr
+
+
+def test_doctor_rejects_invalid_config_without_starting_server(tmp_path):
+    env = dict(environment(tmp_path), AI_ENABLED="true", AI_API_KEY="DO_NOT_PRINT_ME")
+    result = subprocess.run(
+        [sys.executable, "-m", "aling.app", "doctor"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 1
+    assert "配置：失败" in result.stdout
+    assert "DO_NOT_PRINT_ME" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("args, expected", [(["--help"], 0), (["--version"], 0), (["typo"], 2)])
+def test_cli_arguments_do_not_start_server_or_read_config(tmp_path, args, expected):
+    env = dict(environment(tmp_path), ONEBOT_ACCESS_TOKEN="", SUPERUSERS="invalid-private-value")
+    result = subprocess.run(
+        [sys.executable, "-m", "aling.app", *args],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == expected
+    assert "invalid-private-value" not in result.stdout + result.stderr
+    assert "Invalid configuration" not in result.stderr
+    assert not (tmp_path / "settings.db").exists()
+    if args == ["--version"]:
+        assert "0.3.0" in result.stdout

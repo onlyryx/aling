@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a reproducible ALING problem
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Do not include tokens, QQ login material, private chat, or database files.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ALING version and environment
+    validations:
+      required: true

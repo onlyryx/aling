@@ -1,6 +1,8 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 
+from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
+
 from aling.core.config import Settings
 from aling.core.permissions import PermissionContext, require_group_admin
 from aling.core.rate_limit import RateLimiter
@@ -36,3 +38,12 @@ class ProactiveSender:
             async with asyncio.timeout(10):
                 await send_text(group_id, text[:4000])
             return True
+
+
+async def send_group_text(bot: Bot, group_id: int, text: str) -> None:
+    """Send configured prose as a text segment, never parse user text as CQ code."""
+    await bot.call_api(
+        "send_group_msg",
+        group_id=group_id,
+        message=Message([MessageSegment.text(text)]),
+    )

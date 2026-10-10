@@ -10,6 +10,9 @@ dist/
 .env.*
 !.env.example
 data/
+*.db
+*.db-*
+*.sqlite*
 logs/
 .DS_Store
 .superpowers/

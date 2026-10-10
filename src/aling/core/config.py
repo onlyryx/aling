@@ -1,6 +1,8 @@
+from datetime import time
 from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,8 +40,38 @@ class Settings(BaseSettings):
     proactive_enabled: bool = False
     proactive_cooldown_seconds: float = Field(default=300, gt=0)
     proactive_max_per_hour: int = Field(default=3, ge=1)
+    proactive_max_per_day: int = Field(default=1, ge=1, le=24)
+    proactive_timezone: str = "Asia/Shanghai"
+    proactive_quiet_start: time = time(23, 0)
+    proactive_quiet_end: time = time(8, 0)
+    web_enabled: bool = False
+    meme_enabled: bool = False
+    ai_tools_enabled: bool = False
+    ai_memory_enabled: bool = False
+    ai_tool_timeout: float = Field(default=10, gt=0, le=30)
+    ai_tool_turn_timeout: float = Field(default=45, gt=0, le=120)
+    ai_session_ttl: int = Field(default=600, ge=60, le=3600)
+    ai_session_max_turns: int = Field(default=6, ge=1, le=20)
+    ai_session_max_chars: int = Field(default=12000, ge=1000, le=50000)
+    ai_session_max_count: int = Field(default=1000, ge=1, le=10000)
+    meme_dir: Path = Path("data/memes")
     web_timeout: float = Field(default=10, gt=0, le=60)
     web_max_bytes: int = Field(default=1_000_000, ge=1, le=5_000_000)
+
+    @field_validator("proactive_timezone")
+    @classmethod
+    def valid_proactive_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("Invalid proactive timezone") from exc
+        return value
+
+    @model_validator(mode="after")
+    def valid_proactive_quiet_hours(self) -> "Settings":
+        if self.proactive_quiet_start == self.proactive_quiet_end:
+            raise ValueError("Proactive quiet hours must have different start and end times")
+        return self
 
     @field_validator("onebot_access_token")
     @classmethod
