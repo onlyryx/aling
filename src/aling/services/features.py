@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from secrets import token_urlsafe
 from time import monotonic
@@ -119,9 +119,7 @@ class FeatureService:
         async with self._lock:
             if enabled and not self.globally_enabled(feature):
                 raise FeatureDisabledError("Global feature switch is off")
-            await self.store.set_feature_enabled(context.group_id, feature, enabled)
-            if feature in {"ai", "memory"} and not enabled:
-                await self._clear_memory(context.group_id)
+            await self._complete_mutation(self._persist_feature(context.group_id, feature, enabled))
 
     async def set_global(self, user_id: int, feature: str, enabled: bool) -> None:
         if user_id not in self.settings.superusers:
@@ -137,10 +135,7 @@ class FeatureService:
                 )
             if enabled and feature == "memory" and not self.globally_enabled("ai"):
                 raise FeatureDisabledError("Enable the global AI switch before enabling memory")
-            await self.store.set_global_feature_enabled(feature, enabled)
-            if feature in {"ai", "memory"} and not enabled:
-                await self._clear_memory()
-            self._global_overrides[feature] = enabled
+            await self._complete_mutation(self._persist_feature(None, feature, enabled))
 
     async def request_memory(self, context: PermissionContext, *, scope: str) -> MemoryConfirmation:
         require_group_admin(context, self.settings.superusers, self.settings.allowed_groups)
@@ -199,7 +194,37 @@ class FeatureService:
                 del self._memory_confirmations[ticket]
                 raise MemoryConfirmationExpired("Memory confirmation expired")
             self._require_memory_available()
-            await self.store.set_feature_enabled(context.group_id, "memory", True)
+            await self._complete_mutation(
+                self._persist_feature(context.group_id, "memory", True, ticket=ticket)
+            )
+
+    async def _complete_mutation(self, operation: Coroutine) -> None:
+        """Keep the caller's feature lock until save and its side effects finish."""
+        mutation = asyncio.create_task(operation)
+        cancelled = False
+        while True:
+            try:
+                await asyncio.shield(mutation)
+                break
+            except asyncio.CancelledError:
+                if mutation.cancelled():
+                    raise
+                cancelled = True
+        if cancelled:
+            raise asyncio.CancelledError
+
+    async def _persist_feature(
+        self, group_id: int | None, feature: str, enabled: bool, *, ticket: str | None = None
+    ) -> None:
+        if group_id is None:
+            await self.store.set_global_feature_enabled(feature, enabled)
+        else:
+            await self.store.set_feature_enabled(group_id, feature, enabled)
+        if feature in {"ai", "memory"} and not enabled:
+            await self._clear_memory(group_id)
+        if group_id is None:
+            self._global_overrides[feature] = enabled
+        if ticket is not None:
             del self._memory_confirmations[ticket]
 
     def _require_memory_available(self) -> None:

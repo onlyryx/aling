@@ -1,4 +1,6 @@
 import asyncio
+import sqlite3
+import threading
 
 import pytest
 
@@ -259,3 +261,124 @@ async def test_confirmation_rechecks_credentials_and_preserves_ticket_on_failed_
     assert not await features.enabled(34, "memory")
     await features.confirm_memory(context, scope="qq", ticket=confirmation.ticket)
     assert await features.enabled(34, "memory")
+
+
+@pytest.fixture
+def paused_sqlite_write(consent_runtime, monkeypatch):
+    entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+    connect = sqlite3.connect
+    first = True
+
+    class ObservedConnection(sqlite3.Connection):
+        def close(self):
+            super().close()
+            finished.set()
+
+    def paused_connect(*args, **kwargs):
+        nonlocal first
+        if first:
+            first = False
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError("Test did not release the paused SQLite write")
+            kwargs["factory"] = ObservedConnection
+        return connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", paused_connect)
+    yield entered, release, finished
+    release.set()
+
+
+@pytest.mark.parametrize("operation", ["global", "group", "confirm"])
+async def test_cancelled_sqlite_save_finishes_before_a_queued_mutation(
+    consent_runtime, paused_sqlite_write, operation
+):
+    features, sessions = consent_runtime.features, consent_runtime.sessions
+    entered, release, finished = paused_sqlite_write
+    context = PermissionContext(12, 34, "member")
+    confirmation = await features.request_memory(context, scope="qq")
+    await sessions.add(34, 12, "question", "reply")
+    revision = sessions.revision
+
+    def change(enabled):
+        if operation == "global":
+            return features.set_global(12, "ai", enabled)
+        if operation == "group":
+            return features.set(context, "ai", enabled)
+        return features.confirm_memory(context, scope="qq", ticket=confirmation.ticket)
+
+    saving = asyncio.create_task(change(False))
+    following = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        saving.cancel()
+        await asyncio.sleep(0)
+        saving.cancel()
+        following = asyncio.create_task(change(True))
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        serialized = not saving.done() and not following.done()
+    finally:
+        release.set()
+        tasks = [saving] if following is None else [saving, following]
+        outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+        assert await asyncio.to_thread(finished.wait, 2)
+    assert serialized, "Cancellation released serialization before the SQLite write completed"
+    assert isinstance(outcomes[0], asyncio.CancelledError)
+    if operation == "confirm":
+        assert isinstance(outcomes[1], feature_errors.MemoryConfirmationRequired)
+        assert await features.enabled(34, "memory")
+    else:
+        assert outcomes[1] is None
+        assert await features.enabled(34, "ai")
+        assert await sessions.get(34, 12) == []
+        await sessions.add(34, 12, "late question", "reply", expected_revision=revision)
+        assert await sessions.get(34, 12) == []
+    with pytest.raises(feature_errors.MemoryConfirmationRequired):
+        await features.confirm_memory(context, scope="qq", ticket=confirmation.ticket)
+
+
+@pytest.mark.parametrize("global_change", [False, True])
+async def test_cancellation_during_cleanup_retains_serialization(
+    consent_runtime, monkeypatch, global_change
+):
+    features, sessions = consent_runtime.features, consent_runtime.sessions
+    context = PermissionContext(12, 34, "member")
+    confirmation = await features.request_memory(context, scope="qq")
+    await sessions.add(34, 12, "question", "reply")
+    entered, release = asyncio.Event(), asyncio.Event()
+    method = "clear" if global_change else "clear_group"
+    clear = getattr(sessions, method)
+
+    async def paused_cleanup(*args):
+        entered.set()
+        await release.wait()
+        await clear(*args)
+
+    monkeypatch.setattr(sessions, method, paused_cleanup)
+
+    def change(enabled):
+        if global_change:
+            return features.set_global(12, "ai", enabled)
+        return features.set(context, "ai", enabled)
+
+    disabling = asyncio.create_task(change(False))
+    following = None
+    try:
+        await entered.wait()
+        disabling.cancel()
+        await asyncio.sleep(0)
+        following = asyncio.create_task(change(True))
+        await asyncio.sleep(0)
+        serialized = not disabling.done() and not following.done()
+    finally:
+        release.set()
+        tasks = [disabling] if following is None else [disabling, following]
+        outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+    assert serialized, "Cancellation released serialization before cleanup completed"
+    assert isinstance(outcomes[0], asyncio.CancelledError)
+    assert outcomes[1] is None
+    assert await features.enabled(34, "ai")
+    assert await sessions.get(34, 12) == []
+    with pytest.raises(feature_errors.MemoryConfirmationRequired):
+        await features.confirm_memory(context, scope="qq", ticket=confirmation.ticket)
