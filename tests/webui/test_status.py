@@ -147,6 +147,30 @@ async def test_status_query_has_ten_second_total_budget(monkeypatch):
     assert result["online"] is None and budgets == [10]
 
 
+async def test_group_refresh_deadline_includes_waiting_for_lock(monkeypatch):
+    original_timeout = asyncio.timeout
+    budgets = []
+
+    def short_timeout(seconds):
+        budgets.append(seconds)
+        return original_timeout(0.03)
+
+    monkeypatch.setattr("aling.services.status.asyncio.timeout", short_timeout)
+    status = ConnectionStatus()
+    bot = FakeBot()
+    await status._groups_lock.acquire()
+    refresh = asyncio.create_task(status.refresh_groups(bot))
+    try:
+        done, _ = await asyncio.wait({refresh}, timeout=0.045)
+        assert refresh in done, "group refresh must include lock wait in its total deadline"
+        assert refresh.result() is False
+        assert bot.calls == []
+    finally:
+        status._groups_lock.release()
+        await asyncio.gather(refresh)
+    assert budgets == [10]
+
+
 def test_ai_and_web_diagnostics_never_retain_provider_content(runtime_panel):
     client, runtime = runtime_panel
 

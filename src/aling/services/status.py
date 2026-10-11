@@ -142,29 +142,29 @@ class ConnectionStatus:
             return dict(result)
 
     async def refresh_groups(self, bot: Bot | None) -> bool:
-        async with self._groups_lock:
-            if bot is None:
-                return False
-            try:
-                async with asyncio.timeout(10):
+        try:
+            async with asyncio.timeout(10):
+                async with self._groups_lock:
+                    if bot is None:
+                        return False
                     payload = await bot.call_api("get_group_list")
-                if not isinstance(payload, list):
-                    raise ValueError("Invalid group list")
-                snapshot = {}
-                for group in payload[:1000]:
-                    if not isinstance(group, dict):
-                        continue
-                    group_id = group.get("group_id")
-                    if type(group_id) is int and 0 < group_id <= 2**63 - 1:
-                        name = group.get("group_name")
-                        snapshot[group_id] = name[:200] if isinstance(name, str) else None
-                self.group_snapshot = snapshot
-                self.groups_queried_at = _now().isoformat()
-                self.groups_truncated = len(payload) > 1000
-                return True
-            except Exception as exc:
-                self.record_diagnostic("onebot", "groups_failed", exception_type=type(exc).__name__)
-                return False
+                    if not isinstance(payload, list):
+                        raise ValueError("Invalid group list")
+                    snapshot = {}
+                    for group in payload[:1000]:
+                        if not isinstance(group, dict):
+                            continue
+                        group_id = group.get("group_id")
+                        if type(group_id) is int and 0 < group_id <= 2**63 - 1:
+                            name = group.get("group_name")
+                            snapshot[group_id] = name[:200] if isinstance(name, str) else None
+                    self.group_snapshot = snapshot
+                    self.groups_queried_at = _now().isoformat()
+                    self.groups_truncated = len(payload) > 1000
+                    return True
+        except Exception as exc:
+            self.record_diagnostic("onebot", "groups_failed", exception_type=type(exc).__name__)
+            return False
 
     async def onebot_status(self, bot: Bot) -> tuple[str, str]:
         result = await self.refresh_qq(bot)
