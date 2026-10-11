@@ -85,6 +85,10 @@ def build_app(
         if nonebot.load_plugin(plugin) is None:
             raise RuntimeError("A configured plugin could not be loaded")
     app = nonebot.get_app()
+    if settings.webui_enabled:
+        from aling.webui import mount_webui
+
+        mount_webui(app, runtime)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -132,7 +136,7 @@ def main() -> None:
         raise SystemExit(2) from None
     build_app(settings)
     # Access logs may contain request URLs/credentials. Keep server logs on the privacy sink.
-    nonebot.run(access_log=False)
+    nonebot.run(access_log=False, proxy_headers=False, forwarded_allow_ips="")
 
 
 if __name__ == "__main__":

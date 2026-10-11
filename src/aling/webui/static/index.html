@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>阿零管理面板 · ALING</title>
+  <link rel="stylesheet" href="/webui/styles.css">
+  <script type="module" src="/webui/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <main id="login-view" class="login-layout">
+    <section class="card login-card" aria-labelledby="login-title">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">零</span><div><strong>ALING</strong><span>阿零 · 机器人管理</span></div></div>
+      <h1 id="login-title">阿零管理面板</h1>
+      <p class="muted">使用部署者设置的独立密钥登录。</p>
+      <form id="login-form">
+        <label for="login-key">阿零面板登录密钥</label>
+        <input id="login-key" name="token" type="password" autocomplete="off" required aria-describedby="key-help login-error">
+        <p id="key-help" class="help">此密钥与 NapCat WebUI 密钥、OneBot Token 和模型 API Key 分别独立。</p>
+        <p id="login-error" class="error" role="alert" hidden></p>
+        <button id="login-submit" class="primary" type="submit">登录面板</button>
+      </form>
+      <button class="theme-toggle text-button" type="button">切换深色主题</button>
+      <p class="credit">Jack233_ / onlyryx</p>
+    </section>
+  </main>
+  <div id="panel-view" class="panel-layout" hidden>
+    <button id="nav-backdrop" class="nav-backdrop" type="button" aria-label="关闭导航" hidden></button>
+    <aside id="sidebar" class="sidebar" aria-label="管理面板导航">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">零</span><div><strong>ALING</strong><span>阿零管理面板</span></div></div>
+      <div class="nav-label">管理</div>
+      <nav aria-label="主要导航">
+        <button class="nav-item selected" type="button" data-page="overview" aria-current="page"><span aria-hidden="true">◫</span>概览</button>
+        <button class="nav-item" type="button" data-page="features"><span aria-hidden="true">☷</span>群与功能</button>
+        <button class="nav-item" type="button" data-page="memes"><span aria-hidden="true">▧</span>表情包</button>
+        <button class="nav-item" type="button" data-page="schedules"><span aria-hidden="true">◷</span>定时消息</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button class="theme-toggle text-button" type="button">切换深色主题</button>
+        <button id="logout" class="text-button" type="button">退出登录</button>
+        <p class="credit">Jack233_ / onlyryx</p>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <button id="nav-toggle" class="menu-button" type="button" aria-label="打开导航" aria-controls="sidebar" aria-expanded="false">☰</button>
+        <span class="breadcrumb">阿零 <span aria-hidden="true">/</span> <span id="breadcrumb-page">概览</span></span>
+        <span class="session-status">已登录</span>
+      </header>
+      <main id="main" class="content" tabindex="-1">
+        <div class="page-heading"><div><p class="eyebrow">ALING PANEL</p><h1 id="page-title">概览</h1><p id="page-subtitle" class="muted">阿零的管理入口，清楚查看每一项操作。</p></div><span class="badge">面板基础已就绪</span></div>
+        <p id="panel-notice" class="notice" role="status" hidden></p>
+        <section class="card placeholder" aria-labelledby="placeholder-title">
+          <span class="placeholder-symbol" aria-hidden="true">◫</span>
+          <h2 id="placeholder-title">管理面板已连接</h2>
+          <p id="placeholder-description" class="muted">运行状态与最近事件将在后续版本接入。当前页面仅提供安全登录和导航，不显示尚未获取的数据。</p>
+          <div class="info-line">模型与人格将仅供查看；群与功能、表情包和定时消息正在接入。</div>
+        </section>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

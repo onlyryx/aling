@@ -72,6 +72,9 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
         onebot_access_token="test-secret",
         database_path=tmp_path / "settings.db",
         superusers={12},
+        webui_enabled=True,
+        webui_admin_token="fictional-panel-key-" + "a" * 43,
+        webui_owner_id=12,
         ai_api_key="fake-key",
         ai_model="test-model",
         ai_cooldown_seconds=0,
@@ -84,7 +87,12 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
         runtime = get_runtime()
         expiry_task = runtime._session_expiry_task
         assert expiry_task is not None and not expiry_task.done()
-        assert client.get("/health").json() == {"status": "ok"}
+        assert client.get("/webui/").status_code == 200
+        assert (
+            client.get("/api/admin/session", headers={"Host": "127.0.0.1:8080"}).status_code == 401
+        )
+        assert app.state.panel_runtime is runtime
+        assert client.get("/health", headers={"Host": "bot:8080"}).json() == {"status": "ok"}
         assert client.get("/ready").status_code == 503
 
         with pytest.raises(WebSocketDisconnect):
@@ -95,7 +103,7 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                 "/onebot/v11/ws", headers={"X-Self-ID": "99", "Authorization": "Bearer wrong"}
             ):
                 pass
-        headers = {"X-Self-ID": "99", "Authorization": "Bearer test-secret"}
+        headers = {"X-Self-ID": "99", "Authorization": "Bearer test-secret", "Host": "bot:8080"}
         with client.websocket_connect("/onebot/v11/ws", headers=headers) as ws:
             assert client.get("/ready").json() == {"status": "ready"}
             # A subsequent /ping proves these preceding messages produced no reply.
