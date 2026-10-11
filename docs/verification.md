@@ -1,5 +1,23 @@
 # 验证记录
 
+## v0.4.0 面板交付检查（本地，未发布）
+
+验证日期：2026-10-12（Asia/Shanghai）。
+
+- `uv run --frozen --extra dev pytest -q`：308 项通过。保留 1 条现有 Starlette `httpx`
+  TestClient 弃用提示。
+- `uv run --frozen --extra dev ruff check .`、`uv run --frozen --extra dev ruff format --check .`、
+  `uv lock --check`、`git diff --check` 均通过。
+- `uv build` 成功生成 `aling-0.4.0.tar.gz` 和 `aling-0.4.0-py3-none-any.whl`。新增分发测试用
+  临时目录独立安装 wheel，确认 HTML、CSS 和四页 JS 模块存在、模块引用可解析且静态资源没有 CDN URL。
+- 基础 Compose 和叠加 `compose.webui.yaml` 的两种 `config --quiet` 均通过，使用 `.env.example`。
+- 现有 OneBot 集成测试继续覆盖认证 WebSocket、`/ping`、`/status` 和 `/health`/`/ready`；新增面板集成
+  测试覆盖启用时四组 API、禁用时面板 404、健康路由保留及虚构密钥/提示词不进入响应或日志。
+- 本机 Docker CLI 与 Compose 可用（Compose v5.5.1），但 Docker Engine 未运行，`docker info` 因
+  Docker socket 不存在失败；因此没有运行镜像构建或容器验收。未覆盖浏览器手工验收，留给本轮主代理。
+- 所有自动验收只用测试内的虚构 Runtime/凭据和临时 SQLite/素材目录；没有读取真实 `.env`，没有连接
+  QQ、NapCat 或模型服务，没有启动、停止或替换现有容器。
+
 ## v0.3.0 最终收尾验证（未提交、未部署）
 
 验证日期：2026-10-10（Asia/Shanghai）。工作树：`codex/aling-v03`，基线提交仍为
