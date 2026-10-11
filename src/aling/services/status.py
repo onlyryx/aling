@@ -110,33 +110,35 @@ class ConnectionStatus:
         self._diagnostics = self._diagnostics[-100:]
 
     async def refresh_qq(self, bot: Bot | None) -> dict:
-        async with self._qq_lock:
-            if (
-                self._qq_cached_at is not None
-                and self._qq_bot is bot
-                and monotonic() - self._qq_cached_at < 30
-            ):
-                return dict(self._qq)
-            revision = self._connection_revision
-            result = _unknown_qq()
-            result["queried_at"] = _now().isoformat()
-            if bot is not None:
-                try:
-                    async with asyncio.timeout(10):
-                        payload = await bot.call_api("get_status")
-                    if isinstance(payload, dict):
-                        for key in ("online", "good"):
-                            result[key] = (
-                                payload.get(key) if type(payload.get(key)) is bool else None
-                            )
-                except Exception as exc:
-                    self.record_diagnostic(
-                        "onebot", "status_failed", exception_type=type(exc).__name__
-                    )
-            # A disconnect/replacement during the request cannot publish stale online state.
-            if revision != self._connection_revision:
-                result["online"] = result["good"] = None
-            self._qq, self._qq_bot, self._qq_cached_at = result, bot, monotonic()
+        result = _unknown_qq()
+        result["queried_at"] = _now().isoformat()
+        revision = self._connection_revision
+        try:
+            async with asyncio.timeout(10):
+                async with self._qq_lock:
+                    if (
+                        self._qq_cached_at is not None
+                        and self._qq_bot is bot
+                        and monotonic() - self._qq_cached_at < 30
+                    ):
+                        return dict(self._qq)
+                    try:
+                        if bot is not None:
+                            payload = await bot.call_api("get_status")
+                            if isinstance(payload, dict):
+                                for key in ("online", "good"):
+                                    result[key] = (
+                                        payload.get(key) if type(payload.get(key)) is bool else None
+                                    )
+                    finally:
+                        # Publish while still owning the lock, including unknown query failures.
+                        # A waiter that times out before acquiring it must not overwrite this cache.
+                        if revision != self._connection_revision:
+                            result["online"] = result["good"] = None
+                        self._qq, self._qq_bot, self._qq_cached_at = result, bot, monotonic()
+                    return dict(result)
+        except Exception as exc:
+            self.record_diagnostic("onebot", "status_failed", exception_type=type(exc).__name__)
             return dict(result)
 
     async def refresh_groups(self, bot: Bot | None) -> bool:

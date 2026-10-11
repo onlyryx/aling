@@ -46,13 +46,15 @@ export function createFeatures(container) {
         try {
           if (scope === "group" && feature === "memory" && input.checked) {
             const consent = await adminFetch(`/groups/${group}/memory-confirmation`, { method: "POST" });
+            if (selected !== group || rows.get(`group:${feature}`) !== item) return;
             confirmation = { ticket: consent.ticket, group, item };
             area("notice").textContent = consent.notice;
             area("confirmation-error").hidden = true;
             dialog.showModal();
           } else {
             const path = scope === "global" ? `/features/global/${feature}` : `/groups/${group}/features/${feature}`;
-            update(scope, feature, await adminFetch(path, { method: "PUT", body: { enabled: input.checked } }), true);
+            const data = await adminFetch(path, { method: "PUT", body: { enabled: input.checked } });
+            if (scope === "global" || selected === group) update(scope, feature, data, true, item);
             feedback(`${name}已保存`); await refresh();
           }
         } catch (error) { feedback(error.message, true); }
@@ -60,8 +62,9 @@ export function createFeatures(container) {
       });
     }
   }
-  function update(scope, feature, data, saved = false) {
-    const item = rows.get(`${scope}:${feature}`); if (!item) return;
+  function update(scope, feature, data, saved = false, origin = null) {
+    const item = rows.get(`${scope}:${feature}`);
+    if (!item || (origin && item !== origin)) return;
     const requested = scope === "global" ? data.global_requested : data.group_requested;
     item.value = requested;
     item.state.textContent = `保存：${requested ? "开启" : "关闭"} · 实际：${data.effective ? "开启" : "受限 / 关闭"}`;
@@ -123,7 +126,7 @@ export function createFeatures(container) {
     const current = confirmation; action("confirm").disabled = true;
     try {
       const data = await adminFetch(`/groups/${current.group}/memory-confirmation/confirm`, { method: "POST", body: { ticket: current.ticket } });
-      if (selected === current.group) update("group", "memory", data, true);
+      if (selected === current.group) update("group", "memory", data, true, current.item);
       dialog.close(); feedback("短期记忆已保存"); await refresh();
     } catch (error) { area("confirmation-error").textContent = error.message; area("confirmation-error").hidden = false; }
     finally { action("confirm").disabled = false; }

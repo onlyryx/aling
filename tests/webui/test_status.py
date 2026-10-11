@@ -171,3 +171,36 @@ def test_ai_and_web_diagnostics_never_retain_provider_content(runtime_panel):
         ("web", "read_failed"),
     }
     assert "secret" not in str(diagnostics)
+
+
+async def test_replacement_qq_query_deadline_includes_waiting_for_lock(monkeypatch):
+    original_timeout = asyncio.timeout
+    budgets = []
+
+    def short_timeout(seconds):
+        budgets.append(seconds)
+        return original_timeout(0.03)
+
+    monkeypatch.setattr("aling.services.status.asyncio.timeout", short_timeout)
+    first_started = asyncio.Event()
+
+    class SlowBot:
+        async def call_api(self, action):
+            first_started.set()
+            await asyncio.Event().wait()
+
+    status = ConnectionStatus()
+    original, replacement = SlowBot(), SlowBot()
+    status.connected_to(original)
+    first = asyncio.create_task(status.refresh_qq(original))
+    await first_started.wait()
+    status.connected_to(replacement)
+    second = asyncio.create_task(status.refresh_qq(replacement))
+    try:
+        done, _ = await asyncio.wait({second}, timeout=0.045)
+        assert second in done, "replacement query must include lock wait in its total deadline"
+        assert second.result()["online"] is None
+        assert second.result()["good"] is None
+    finally:
+        await asyncio.gather(first, second)
+    assert budgets == [10, 10]

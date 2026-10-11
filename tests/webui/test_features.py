@@ -144,3 +144,29 @@ def test_page_modules_are_served_inside_panel(runtime_panel):
         response = client.get(f"/webui/pages/{path}.js")
         assert response.status_code == 200
         assert "adminFetch" in response.text
+
+
+def test_delayed_group_save_preserves_new_group_draft():
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the real feature page event handlers")
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [
+            node,
+            str(root / "tests/webui/fixtures/features_save_switch.mjs"),
+            str(root / "src/aling/webui/static/pages/features.js"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "destination form unchanged" in result.stdout
