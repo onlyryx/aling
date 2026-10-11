@@ -157,6 +157,12 @@ async def test_group_refresh_deadline_includes_waiting_for_lock(monkeypatch):
 
     monkeypatch.setattr("aling.services.status.asyncio.timeout", short_timeout)
     status = ConnectionStatus()
+    status.group_snapshot = {123: "existing"}
+    status.groups_queried_at = "2026-10-12T00:00:00+00:00"
+    status.groups_truncated = True
+    previous_snapshot = dict(status.group_snapshot)
+    previous_queried_at = status.groups_queried_at
+    previous_truncated = status.groups_truncated
     bot = FakeBot()
     await status._groups_lock.acquire()
     refresh = asyncio.create_task(status.refresh_groups(bot))
@@ -165,6 +171,9 @@ async def test_group_refresh_deadline_includes_waiting_for_lock(monkeypatch):
         assert refresh in done, "group refresh must include lock wait in its total deadline"
         assert refresh.result() is False
         assert bot.calls == []
+        assert status.group_snapshot == previous_snapshot
+        assert status.groups_queried_at == previous_queried_at
+        assert status.groups_truncated is previous_truncated
     finally:
         status._groups_lock.release()
         await asyncio.gather(refresh)
