@@ -13,6 +13,8 @@ from aling.runtime import Runtime
 from aling.webui.auth import PanelAuth
 from aling.webui.boundary import AdminBoundaryMiddleware, is_admin_path
 from aling.webui.routes_features import router as features_router
+from aling.webui.routes_memes import UploadAdmission
+from aling.webui.routes_memes import router as memes_router
 from aling.webui.routes_session import router
 from aling.webui.routes_status import router as status_router
 
@@ -22,6 +24,7 @@ def mount_webui(app: FastAPI, runtime: Runtime) -> None:
         return
     app.state.panel_runtime = runtime
     app.state.panel_auth = PanelAuth(runtime.settings)
+    app.state.panel_uploads = UploadAdmission()
     app.add_middleware(
         AdminBoundaryMiddleware,
         auth=app.state.panel_auth,
@@ -41,6 +44,7 @@ def mount_webui(app: FastAPI, runtime: Runtime) -> None:
     app.include_router(router)
     app.include_router(status_router)
     app.include_router(features_router)
+    app.include_router(memes_router)
     app.mount(
         "/webui", StaticFiles(directory=str(files("aling.webui").joinpath("static")), html=True)
     )

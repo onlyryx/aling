@@ -1,6 +1,7 @@
 import { api, setSession } from "./api.js";
 import { createOverview } from "./pages/overview.js";
 import { createFeatures } from "./pages/features.js";
+import { createMemes } from "./pages/memes.js";
 
 const byId = (id) => document.getElementById(id);
 const loginView = byId("login-view");
@@ -45,7 +46,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 let activePage = "overview";
-const pageFactories = { overview: createOverview, features: createFeatures };
+const pageFactories = { overview: createOverview, features: createFeatures, memes: createMemes };
 const pageInstances = new Map();
 function openPage(page) {
   activePage = page;

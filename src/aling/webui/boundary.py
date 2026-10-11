@@ -1,5 +1,6 @@
 """Admin-only ASGI checks, completed before a business route can read its body."""
 
+import re
 from secrets import compare_digest
 from urllib.parse import urlsplit
 
@@ -45,15 +46,19 @@ class AdminBoundaryMiddleware:
 
         async def secure_send(message):
             if message["type"] == "http.response.start":
-                keys = {key.lower().encode() for key in SECURITY_HEADERS}
+                headers = SECURITY_HEADERS.copy()
+                if scope["method"] == "GET" and re.fullmatch(
+                    r"/api/admin/memes/[a-zA-Z0-9_-]{1,64}/image", path
+                ):
+                    headers["Content-Security-Policy"] = (
+                        "default-src 'none'; frame-ancestors 'none'; sandbox"
+                    )
+                keys = {key.lower().encode() for key in headers}
                 message["headers"] = [
                     (key, value)
                     for key, value in message.get("headers", [])
                     if key.lower() not in keys
-                ] + [
-                    (key.lower().encode(), value.encode())
-                    for key, value in SECURITY_HEADERS.items()
-                ]
+                ] + [(key.lower().encode(), value.encode()) for key, value in headers.items()]
             await send(message)
 
         async def reject(status: int, detail: str):
@@ -101,7 +106,9 @@ class AdminBoundaryMiddleware:
                 await reject(429, "Login rate limit reached")
                 return
         limit = 1024 if login else 16384
-        if path == "/api/admin/memes/upload" and scope["method"] == "POST":
+        upload = path == "/api/admin/memes/upload" and scope["method"] == "POST"
+        declared_oversized = False
+        if upload:
             limit = 5_000_000
         lengths = [value for key, value in scope["headers"] if key.lower() == b"content-length"]
         if lengths:
@@ -112,14 +119,18 @@ class AdminBoundaryMiddleware:
             length = lengths[0].lstrip(b"0") or b"0"
             maximum = str(limit).encode()
             if len(length) > len(maximum) or (len(length) == len(maximum) and length > maximum):
-                await reject(413, "Panel request body too large")
-                return
-        if path == "/api/admin/memes/upload" and scope["method"] == "POST":
+                if not upload:
+                    await reject(413, "Panel request body too large")
+                    return
+                declared_oversized = True
+        if upload:
             # Let the upload route acquire its concurrency slot before reading image bytes.
             received = 0
 
             async def image_receive():
                 nonlocal received
+                if declared_oversized:
+                    raise HTTPException(413, "Panel request body too large")
                 message = await receive()
                 if message["type"] == "http.request":
                     received += len(message.get("body", b""))
