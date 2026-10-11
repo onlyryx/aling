@@ -1,0 +1,7 @@
+# Explicit opt-in: retain the existing target, data volumes and read-only root filesystem.
+services:
+  bot:
+    environment:
+      WEBUI_ENABLED: "true"
+    volumes:
+      - ./data/memes:/app/memes:rw

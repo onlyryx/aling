@@ -21,4 +21,5 @@ jobs:
       - run: uv run --frozen --extra dev pytest
       - run: uv build
       - run: RYXBOT_ENV_FILE=.env.example docker compose --env-file .env.example --profile qq config --quiet
+      - run: RYXBOT_ENV_FILE=.env.example docker compose -f compose.yaml -f compose.webui.yaml --env-file .env.example --profile qq config --quiet
       - run: docker build -t aling:ci .

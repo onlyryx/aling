@@ -3,7 +3,11 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PermissionContext:
-    """Construct only from authenticated OneBot events, never from model output."""
+    """Construct from authenticated OneBot events or a server-authenticated deployer.
+
+    WebUI uses its configured superuser identity with the member role; browser
+    input and model output must never supply user IDs or administrator roles.
+    """
 
     user_id: int
     group_id: int | None

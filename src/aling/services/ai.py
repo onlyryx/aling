@@ -9,6 +9,7 @@ from aling.core.logging import log
 from aling.core.permissions import PermissionContext
 from aling.core.rate_limit import RateLimiter
 from aling.services.http import read_limited
+from aling.services.status import ConnectionStatus
 
 
 class OpenAIClient:
@@ -90,8 +91,11 @@ class OpenAIClient:
 
 
 class ChatService:
-    def __init__(self, settings: Settings, client: OpenAIClient) -> None:
+    def __init__(
+        self, settings: Settings, client: OpenAIClient, *, status: ConnectionStatus | None = None
+    ) -> None:
         self.settings, self.client = settings, client
+        self.status = status
         self.limiter = RateLimiter(settings.ai_cooldown_seconds, settings.ai_max_per_hour)
         self._active = 0
 
@@ -118,6 +122,10 @@ class ChatService:
         except (httpx.HTTPError, TimeoutError, ValueError, KeyError, IndexError, TypeError) as exc:
             # Never log exception text: providers may echo URLs, credentials or prompts.
             log.warning("AI request failed ({})", type(exc).__name__)
+            if self.status is not None:
+                self.status.record_diagnostic(
+                    "ai", "request_failed", exception_type=type(exc).__name__
+                )
             return "AI 服务暂时不可用，请稍后再试。"
         finally:
             self._active -= 1
@@ -215,6 +223,10 @@ class ChatService:
                 )
         except (TimeoutError, httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
             log.warning("AI tool turn failed ({})", type(exc).__name__)
+            if self.status is not None:
+                self.status.record_diagnostic(
+                    "ai", "tool_turn_failed", exception_type=type(exc).__name__
+                )
             return ChatOutcome("工具或 AI 服务暂时不可用，请稍后再试。")
         finally:
             self._active -= 1

@@ -72,6 +72,9 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
         onebot_access_token="test-secret",
         database_path=tmp_path / "settings.db",
         superusers={12},
+        webui_enabled=True,
+        webui_admin_token="fictional-panel-key-" + "a" * 43,
+        webui_owner_id=12,
         ai_api_key="fake-key",
         ai_model="test-model",
         ai_cooldown_seconds=0,
@@ -80,12 +83,28 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
         meme_dir=meme_dir,
     )
     app = build_app(config, ai_transport=httpx.MockTransport(model))
-    with TestClient(app) as client:
+    log_lines = []
+    configure_logging("DEBUG", sink=log_lines.append)
+    with TestClient(app, base_url=config.webui_origin) as client:
         runtime = get_runtime()
         expiry_task = runtime._session_expiry_task
         assert expiry_task is not None and not expiry_task.done()
-        assert client.get("/health").json() == {"status": "ok"}
+        assert client.get("/webui/").status_code == 200
+        assert (
+            client.get("/api/admin/session", headers={"Host": "127.0.0.1:8080"}).status_code == 401
+        )
+        assert app.state.panel_runtime is runtime
+        assert client.get("/health", headers={"Host": "bot:8080"}).json() == {"status": "ok"}
         assert client.get("/ready").status_code == 503
+        login = client.post(
+            "/api/admin/session",
+            json={"token": config.webui_admin_token.get_secret_value()},
+            headers={"Origin": config.webui_origin},
+        )
+        assert login.status_code == 200
+        client.headers.update(
+            {"Origin": config.webui_origin, "X-CSRF-Token": login.json()["csrf_token"]}
+        )
 
         with pytest.raises(WebSocketDisconnect):
             with client.websocket_connect("/onebot/v11/ws", headers={"X-Self-ID": "99"}):
@@ -95,12 +114,16 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                 "/onebot/v11/ws", headers={"X-Self-ID": "99", "Authorization": "Bearer wrong"}
             ):
                 pass
-        headers = {"X-Self-ID": "99", "Authorization": "Bearer test-secret"}
+        headers = {"X-Self-ID": "99", "Authorization": "Bearer test-secret", "Host": "bot:8080"}
         with client.websocket_connect("/onebot/v11/ws", headers=headers) as ws:
             assert client.get("/ready").json() == {"status": "ready"}
             # A subsequent /ping proves these preceding messages produced no reply.
+            private_discussion = event("fictional private DM body")
+            private_discussion.update(message_type="private", sub_type="friend")
+            private_discussion.pop("group_id")
+            assert private_discussion["message_type"] == "private"
             for ignored in [
-                event("ordinary private discussion"),
+                private_discussion,
                 event("阿零 hello"),
                 event("hello", mention=True, user=99),
                 event("hello", mention=True, group=56),
@@ -250,6 +273,9 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                 in exchange(event("/feature memory confirm", role="admin"))[0]["data"]["text"]
             )
             exchange(event("remember this", mention=True))
+            assert (
+                "已开启" in exchange(event("/feature memory on", role="admin"))[0]["data"]["text"]
+            )
             exchange(event("what did I ask?", mention=True))
             assert [message["content"] for message in model_messages[-1]] == [
                 config.ai_system_prompt,
@@ -258,6 +284,16 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                 "what did I ask?",
             ]
             assert "已清除" in exchange(event("/forget"))[0]["data"]["text"]
+            exchange(event("/feature memory off", role="admin"))
+            exchange(event("/feature memory on", role="admin"))
+            exchange(event("/feature ai off", role="admin"))
+            assert (
+                "确认已过期"
+                in exchange(event("/feature memory confirm", role="admin"))[0]["data"]["text"]
+            )
+            exchange(event("/feature ai on", role="admin"))
+            exchange(event("/feature memory on", role="admin"))
+            exchange(event("/feature memory confirm", role="admin"))
             exchange(event("fresh question", mention=True))
             assert len(model_messages[-1]) == 2
             assert "关闭" in exchange(event("/feature global memory off"))[0]["data"]["text"]
@@ -294,8 +330,13 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                 }
             )
         assert client.get("/ready").status_code == 503
+        panel_overview = client.get("/api/admin/overview")
+        assert panel_overview.status_code == 200
     assert expiry_task.done() and runtime._session_expiry_task is None
     assert not runtime.sessions._sessions
+    bot_logs = "".join(map(str, log_lines))
+    assert "fictional private DM body" not in panel_overview.text
+    assert "fictional private DM body" not in bot_logs
 
 
 def test_logging_omits_framework_message_content_and_exception_locals():

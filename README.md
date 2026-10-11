@@ -7,7 +7,7 @@
 
 源码与问题反馈：[GitHub 仓库](https://github.com/onlyryx/aling)。
 
-项目版本：**0.3.1（修复版）**。使用 Python 3.12+、NoneBot2、OneBot V11、NapCatQQ、SQLite、
+项目版本：**0.4.0**。使用 Python 3.12+、NoneBot2、OneBot V11、NapCatQQ、SQLite、
 httpx、BeautifulSoup 与 Pillow，采用 `plugins → services → core` 分层，保留
 NoneBot 原生插件加载方式。许可证：MIT。
 
@@ -21,6 +21,7 @@ NoneBot 原生插件加载方式。许可证：MIT。
 - `/proactive on|off` 与 `/proactive schedule HH:MM <文本>|off|status`：配置显式定时消息。
 - `/feature ai|web|meme|memory on|off`：本群管理员切换本群功能；启用记忆需先阅读说明再确认。
 - `/feature global ai|web|meme|memory on|off`：配置的超级用户即时调整全局功能开关。
+- 可选的阿零管理面板：通过浏览器查看运行状态、管理功能开关、素材和定时消息。
 
 AI 聊天不收集普通群聊。短期会话默认关闭，启用后只暂存明确 @ 机器人的
 “群号 + 用户号”独立问答，最多 6 轮；空闲 10 分钟后过期，后台最迟一分钟内清理，重启即清空。
@@ -102,6 +103,39 @@ uv run --frozen aling --version
 
 不使用 uv 时，运行 `python3.12 -m venv .venv` 并激活环境，再运行
 `python -m pip install -e '.[dev]'`。此方式按版本范围解析依赖；uv 使用提交的锁文件。
+
+## 阿零管理面板
+
+面板默认关闭。启用时，使用独立于 OneBot、NapCat 和模型 API 密钥的随机登录密钥，并将
+`WEBUI_OWNER_ID` 设为已经列在 `SUPERUSERS` 中的部署者 QQ ID：
+
+```sh
+uv run python -c 'import secrets; print(secrets.token_urlsafe(32))'
+```
+
+```dotenv
+WEBUI_ENABLED=true
+WEBUI_ADMIN_TOKEN=粘贴上一步生成的值
+WEBUI_OWNER_ID=12345678
+WEBUI_ORIGIN=http://127.0.0.1:8080
+```
+
+本机访问使用默认 loopback Origin。远程访问必须通过 HTTPS 反向代理，并把
+`WEBUI_ORIGIN` 设置为浏览器实际访问的 HTTPS 来源（含非默认端口时也要包含端口）；不要把
+面板直接暴露在未经保护的 HTTP 网络上。登录密钥至少 32 个随机字节，配置格式长度检查不能
+代替安全生成。
+
+Docker 部署可以在原有 Compose 命令中加入 `-f compose.webui.yaml`。该覆盖文件会启用面板，并将
+`./data/memes` 从只读切换为可写，以允许上传；不改动 `ryxbot` 项目名、`bot-data` 数据卷或
+`/app/data/ryxbot.db` 路径。若素材保持只读挂载，浏览、查找和预览仍可用，新增、编辑和移除会被拒绝。
+运行命令示例：
+
+```sh
+docker compose -f compose.yaml -f compose.webui.yaml up --build -d bot
+```
+
+首版只允许固定的单个超级用户登录。模型和人格配置编辑、多部署者账号、插件安装、聊天记录、
+群处罚操作、远程部署、进程重启和 QQ 登录均未实现；面板不提供这些入口。
 
 ## 手动接入 NapCatQQ
 

@@ -5,6 +5,7 @@ from pydantic import ValidationError
 from pydantic_settings import SettingsError
 
 from aling.core.config import Settings
+from aling.services.memes import LocalMemeProvider
 
 
 def doctor() -> int:
@@ -25,6 +26,17 @@ def doctor() -> int:
     print(f"数据目录：{'可写' if writable else '不可写'}")
     if not writable:
         return 1
+    asset_status = LocalMemeProvider(settings.meme_dir).write_status()
+    reasons = {
+        "missing_directory": "目录不存在",
+        "unsafe_path": "路径包含不安全链接",
+        "permission_denied": "权限或只读挂载",
+        "invalid_catalog": "清单或上传文件无效",
+    }
+    if asset_status["writable"]:
+        print("素材目录：可写")
+    else:
+        print(f"素材目录：只读（{reasons.get(asset_status['reason'], '不可写')}）")
     try:
         with socket.socket() as sock:
             sock.bind((settings.host, settings.port))

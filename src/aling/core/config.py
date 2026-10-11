@@ -1,15 +1,16 @@
+import re
 from datetime import time
 from importlib.resources import files
 from pathlib import Path
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     host: str = "127.0.0.1"
     port: int = Field(default=8080, ge=1, le=65535)
@@ -19,6 +20,11 @@ class Settings(BaseSettings):
     allowed_groups: set[int] = Field(default_factory=set)
     database_path: Path = Path("data/ryxbot.db")
     extra_plugins: list[str] = Field(default_factory=list)
+
+    webui_enabled: bool = False
+    webui_admin_token: SecretStr = SecretStr("")
+    webui_owner_id: int | None = None
+    webui_origin: str = "http://127.0.0.1:8080"
 
     ai_api_key: SecretStr = SecretStr("")
     ai_base_url: str = "https://api.openai.com/v1"
@@ -62,6 +68,44 @@ class Settings(BaseSettings):
         except (ZoneInfoNotFoundError, ValueError) as exc:
             raise ValueError("Invalid proactive timezone") from exc
         return value
+
+    @model_validator(mode="after")
+    def valid_webui(self) -> "Settings":
+        if not self.webui_enabled:
+            return self
+        # Leave JSON framing room within the 1KiB login body limit.
+        if not re.fullmatch(r"[A-Za-z0-9_-]{43,1000}", self.webui_admin_token.get_secret_value()):
+            raise ValueError("Panel login key must contain 43 to 1000 URL-safe characters")
+        if self.webui_owner_id is None or self.webui_owner_id not in self.superusers:
+            raise ValueError("Panel owner must belong to SUPERUSERS")
+        parts = urlsplit(self.webui_origin)
+        try:
+            port = parts.port
+        except ValueError:
+            raise ValueError("Invalid panel origin") from None
+        if (
+            parts.scheme not in {"http", "https"}
+            or not parts.hostname
+            or not re.fullmatch(
+                r"(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:]+\])(?::[0-9]{1,5})?",
+                parts.netloc,
+            )
+            or parts.username is not None
+            or parts.password is not None
+            or parts.path
+            or parts.query
+            or parts.fragment
+            or (port is not None and port == 0)
+            or self.webui_origin != f"{parts.scheme}://{parts.netloc}"
+            or (parts.scheme == "http" and parts.hostname not in {"127.0.0.1", "localhost", "::1"})
+        ):
+            raise ValueError("Panel origin must be an exact HTTPS or loopback HTTP origin")
+        if self.webui_origin != str(HttpUrl(self.webui_origin)).removesuffix("/"):
+            raise ValueError(
+                "Panel origin must use canonical browser form: lowercase hosts, "
+                "no default or zero-padded ports"
+            )
+        return self
 
     @model_validator(mode="after")
     def valid_proactive_quiet_hours(self) -> "Settings":

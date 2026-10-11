@@ -92,7 +92,7 @@ async def test_ai_global_toggle_requires_credentials_but_not_legacy_env_switch(t
     assert features.globally_enabled("memory")
 
 
-async def test_memory_feature_needs_global_ai_and_group_opt_in_only(tmp_path):
+async def test_memory_feature_needs_global_ai_and_confirmed_group_opt_in(tmp_path):
     settings = Settings(
         _env_file=None,
         onebot_access_token="test",
@@ -110,7 +110,8 @@ async def test_memory_feature_needs_global_ai_and_group_opt_in_only(tmp_path):
     assert not await features.enabled(34, "memory")
     await features.set_global(12, "ai", True)
     await features.set_global(12, "memory", True)
-    await features.set(context, "memory", True)
+    await features.request_memory(context, scope="qq")
+    await features.confirm_memory(context, scope="qq")
     assert not await features.enabled(34, "memory")
     await features.set(context, "ai", True)
     assert await features.enabled(34, "memory")

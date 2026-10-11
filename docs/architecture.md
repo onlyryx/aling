@@ -17,8 +17,9 @@ AI 只响应群内明确 @ 机器人并包含文字的消息，不把昵称或�
 
 ## 功能开关、记忆与模型工具
 
-全局环境开关是功能上限；配置的超级用户可通过 `/feature global` 调整运行时全局开关，
-覆盖值和群级设置均存在 SQLite 中。新群功能默认关闭，必须显式启用；短期记忆还要求群管理员确认。
+AI/web/meme/memory 全局开关默认关闭；配置的超级用户可通过 `/feature global` 调整运行时全局开关，
+全局值和群级设置均存在 SQLite 中。旧环境功能许可不再阻挡开关；开启 AI/记忆仍需模型凭据，
+记忆还依赖全局及本群 AI。新群功能默认关闭，必须显式启用；短期记忆还要求群管理员确认。
 关闭全局 AI 会同时禁止使用短期记忆。主动发言保留全局 `PROACTIVE_ENABLED` 与本群
 `/proactive on` 双开关。`/help` 根据已加载插件元数据和当前群设置过滤命令。
 
@@ -67,3 +68,9 @@ NapCat 为 Compose 的显式 `qq` profile，默认 Compose 只运行 bot。升�
 
 兼容数据标识继续保留：SQLite 默认路径 `data/ryxbot.db`、Compose 项目名 `ryxbot`、
 `bot-data` / `napcat-qq` / `napcat-config` 卷名，以及 `ryxbot` CLI 和 `RYXBOT_ENV_FILE`。
+
+## 后续设计
+
+v0.4 内置可选 WebUI 的范围与权限设计见
+[管理面板设计](superpowers/specs/2026-10-11-v0.4-webui-design.md)。该面板尚未实现，
+不属于当前 v0.3.1 的运行功能。
