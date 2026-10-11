@@ -197,3 +197,76 @@ def test_upload_attempt_window_expires():
     now[0] = 600
     admission.acquire(12345)
     admission.release()
+
+
+@pytest.mark.parametrize(
+    "length_headers",
+    [
+        [(b"content-length", b"invalid")],
+        [(b"content-length", b"83"), (b"content-length", b"83")],
+        [(b"content-length", b"83"), (b"content-length", b"5000001")],
+    ],
+    ids=["malformed", "duplicate", "conflicting"],
+)
+async def test_invalid_upload_lengths_count_once_without_body_read(runtime_panel, length_headers):
+    from tests.webui.test_boundary import asgi_request
+
+    client, _ = runtime_panel
+    admission = client.app.state.panel_uploads
+    headers = [
+        (b"origin", ORIGIN.encode()),
+        (b"x-csrf-token", client.headers["X-CSRF-Token"].encode()),
+        (b"cookie", f"aling_panel_session={client.cookies.get('aling_panel_session')}".encode()),
+        *length_headers,
+    ]
+    for attempt in range(30):
+        reads, messages = await asgi_request(
+            client.app,
+            path="/api/admin/memes/upload",
+            method="POST",
+            body_chunks=[],
+            headers=headers,
+        )
+        assert not reads and messages[0]["status"] == 400
+        assert len(admission.attempts.get(12345, ())) == attempt + 1
+        assert admission.active == 0
+    reads, messages = await asgi_request(
+        client.app, path="/api/admin/memes/upload", method="POST", body_chunks=[], headers=headers
+    )
+    assert not reads and messages[0]["status"] == 429
+    assert len(admission.attempts[12345]) == 30 and admission.active == 0
+    assert client.post("/api/admin/memes/upload", content=picture()).status_code == 429
+
+
+@pytest.mark.parametrize("boundary_failure", ["session", "host", "origin", "csrf"])
+async def test_invalid_upload_length_outside_trust_boundary_is_not_counted(
+    runtime_panel, boundary_failure
+):
+    from tests.webui.test_boundary import asgi_request
+
+    client, _ = runtime_panel
+    headers = {
+        b"origin": ORIGIN.encode(),
+        b"x-csrf-token": client.headers["X-CSRF-Token"].encode(),
+        b"cookie": f"aling_panel_session={client.cookies.get('aling_panel_session')}".encode(),
+        b"content-length": b"invalid",
+    }
+    if boundary_failure == "session":
+        del headers[b"cookie"]
+    elif boundary_failure == "host":
+        headers[b"host"] = b"untrusted.invalid"
+    elif boundary_failure == "origin":
+        headers[b"origin"] = b"https://untrusted.invalid"
+    else:
+        headers[b"x-csrf-token"] = b"invalid"
+    reads, messages = await asgi_request(
+        client.app,
+        path="/api/admin/memes/upload",
+        method="POST",
+        body_chunks=[],
+        headers=list(headers.items()),
+    )
+    assert not reads
+    assert messages[0]["status"] == (401 if boundary_failure == "session" else 403)
+    assert client.app.state.panel_uploads.attempts == {}
+    assert client.app.state.panel_uploads.active == 0

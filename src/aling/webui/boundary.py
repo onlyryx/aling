@@ -107,30 +107,30 @@ class AdminBoundaryMiddleware:
                 return
         limit = 1024 if login else 16384
         upload = path == "/api/admin/memes/upload" and scope["method"] == "POST"
-        declared_oversized = False
+        declared_error = None
         if upload:
             limit = 5_000_000
         lengths = [value for key, value in scope["headers"] if key.lower() == b"content-length"]
         if lengths:
             if len(lengths) != 1 or not lengths[0].isdigit():
-                await reject(400, "Invalid content length")
+                declared_error = (400, "Invalid content length")
+            else:
+                # Compare length lexically to avoid unbounded integer parsing.
+                length = lengths[0].lstrip(b"0") or b"0"
+                maximum = str(limit).encode()
+                if len(length) > len(maximum) or (len(length) == len(maximum) and length > maximum):
+                    declared_error = (413, "Panel request body too large")
+            if declared_error is not None and not upload:
+                await reject(*declared_error)
                 return
-            # Compare length lexically to avoid unbounded integer parsing.
-            length = lengths[0].lstrip(b"0") or b"0"
-            maximum = str(limit).encode()
-            if len(length) > len(maximum) or (len(length) == len(maximum) and length > maximum):
-                if not upload:
-                    await reject(413, "Panel request body too large")
-                    return
-                declared_oversized = True
         if upload:
             # Let the upload route acquire its concurrency slot before reading image bytes.
             received = 0
 
             async def image_receive():
                 nonlocal received
-                if declared_oversized:
-                    raise HTTPException(413, "Panel request body too large")
+                if declared_error is not None:
+                    raise HTTPException(*declared_error)
                 message = await receive()
                 if message["type"] == "http.request":
                     received += len(message.get("body", b""))
