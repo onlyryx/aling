@@ -50,12 +50,20 @@ def _inactive_reasons(settings, status, group_id: int, proactive_enabled: bool) 
     return reasons
 
 
-async def _item(request: Request, group_id: int, schedule=None) -> dict:
+async def _item(request: Request, group_id: int, schedule=None, claim_dates=None) -> dict:
     runtime = request.app.state.panel_runtime
     proactive_enabled = await runtime.store.is_proactive_enabled(group_id)
     inactive_reasons = _inactive_reasons(
         runtime.settings, runtime.status, group_id, proactive_enabled
     )
+    attempted_dates = [
+        value
+        for value in (
+            (claim_dates or {}).get(group_id),
+            schedule.last_attempted_date if schedule else None,
+        )
+        if value is not None
+    ]
     return {
         "group_id": group_id,
         "schedule": (
@@ -63,7 +71,7 @@ async def _item(request: Request, group_id: int, schedule=None) -> dict:
                 "hour": schedule.hour,
                 "minute": schedule.minute,
                 "text": schedule.text,
-                "last_attempted_date": schedule.last_attempted_date,
+                "last_attempted_date": max(attempted_dates, default=None),
             }
             if schedule
             else None
@@ -86,18 +94,27 @@ async def _run(request: Request, operation):
         raise HTTPException(503, "storage_unavailable") from None
 
 
+async def _read(request: Request, operation):
+    try:
+        return await operation
+    except (sqlite3.Error, OSError):
+        request.app.state.panel_runtime.status.record_diagnostic("storage", "read_failed")
+        raise HTTPException(503, "storage_unavailable") from None
+
+
 @router.get("/schedules")
 async def schedules(request: Request):
     runtime = request.app.state.panel_runtime
     try:
         configured = await runtime.store.list_configured_group_ids()
         saved = await runtime.store.list_schedules()
+        claim_dates = await runtime.store.list_schedule_claim_dates()
         group_ids = sorted(
             set(configured) | runtime.settings.allowed_groups | set(runtime.status.group_snapshot)
         )
         schedules_by_group = {schedule.group_id: schedule for schedule in saved}
         items = [
-            await _item(request, group_id, schedules_by_group.get(group_id))
+            await _item(request, group_id, schedules_by_group.get(group_id), claim_dates)
             for group_id in group_ids
             if runtime.settings.group_allowed(group_id)
         ]
@@ -129,15 +146,20 @@ async def set_schedule(request: Request, group_id: GroupID, body: ScheduleInput)
             _context(request, group_id), body.hour, body.minute, body.text
         ),
     )
-    schedule = await _run(request, runtime.scheduler.get_schedule(group_id))
-    return await _run(request, _item(request, group_id, schedule))
+    schedule = await _read(request, runtime.scheduler.get_schedule(group_id))
+    claim_dates = await _read(request, runtime.store.list_schedule_claim_dates())
+    return await _read(request, _item(request, group_id, schedule, claim_dates))
 
 
 @router.delete("/groups/{group_id}/schedule")
 async def delete_schedule(request: Request, group_id: GroupID):
     runtime = request.app.state.panel_runtime
     deleted = await _run(request, runtime.scheduler.delete_schedule(_context(request, group_id)))
-    return {**await _run(request, _item(request, group_id)), "deleted": deleted}
+    claim_dates = await _read(request, runtime.store.list_schedule_claim_dates())
+    return {
+        **await _read(request, _item(request, group_id, claim_dates=claim_dates)),
+        "deleted": deleted,
+    }
 
 
 @router.put("/groups/{group_id}/proactive")
@@ -147,5 +169,6 @@ async def set_proactive(request: Request, group_id: GroupID, body: ProactiveInpu
         request,
         runtime.proactive.set_enabled(_context(request, group_id), body.enabled),
     )
-    schedule = await _run(request, runtime.scheduler.get_schedule(group_id))
-    return await _run(request, _item(request, group_id, schedule))
+    schedule = await _read(request, runtime.scheduler.get_schedule(group_id))
+    claim_dates = await _read(request, runtime.store.list_schedule_claim_dates())
+    return await _read(request, _item(request, group_id, schedule, claim_dates))

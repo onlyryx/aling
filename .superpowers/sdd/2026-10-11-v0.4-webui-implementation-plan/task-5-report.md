@@ -42,3 +42,11 @@ Added `tests/webui/fixtures/schedules_save_state.mjs` and a Python runner. The f
 RED: `node tests/webui/fixtures/schedules_save_state.mjs src/aling/webui/static/pages/schedules.js` failed at the regression assertion (`true !== false`) before the fix. GREEN: the same command passed after the fix and reported that drafts remain preserved and Delete remains enabled.
 
 Focused verification: `uv run --frozen --extra dev pytest tests/webui/test_schedules.py tests/test_scheduler.py tests/test_integration.py -q` — 19 passed, 1 existing Starlette TestClient/httpx deprecation warning. Ruff check passed; Ruff format check reported 85 files already formatted; schedule page module syntax check and `git diff --check` passed.
+
+## Fix round 2 — show the saved attempt date after plan recreation
+
+Independent review found that deletion/recreation correctly retained the scheduler's persistent no-send claim but the recreated row showed `last_attempted_date: null`, because its per-row field had reset. Added the read-only `GroupSettingsStore.list_schedule_claim_dates()` view. Schedule API responses now report the latest ISO date from the persistent claim table or schedule row; the name and UI label remain “last attempted date,” with no delivery-success implication. Read failures use the existing fixed storage-unavailable response and read diagnostic category.
+
+RED: `uv run --frozen --extra dev pytest tests/webui/test_schedules.py::test_panel_recreation_does_not_reset_daily_claim -q` failed because the recreated schedule returned `None` instead of `2026-10-10`. The regression now asserts that both the immediate PUT response and GET list expose `2026-10-10`, then calls the fictional-clock scheduler again and verifies zero sends.
+
+GREEN/focused verification: `uv run --frozen --extra dev pytest tests/webui/test_schedules.py tests/test_scheduler.py tests/test_integration.py -q` — 19 passed, 1 existing Starlette TestClient/httpx deprecation warning. Ruff check passed; Ruff format check reported 85 files already formatted; `git diff --check` passed.

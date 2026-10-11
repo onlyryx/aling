@@ -220,6 +220,16 @@ class GroupSettingsStore:
 
         return await asyncio.to_thread(read)
 
+    async def list_schedule_claim_dates(self) -> dict[int, str]:
+        def read() -> dict[int, str]:
+            with closing(sqlite3.connect(self.path, timeout=5)) as conn:
+                rows = conn.execute(
+                    "SELECT group_id, last_attempted_date FROM proactive_schedule_claims"
+                ).fetchall()
+            return {group_id: last_attempted_date for group_id, last_attempted_date in rows}
+
+        return await asyncio.to_thread(read)
+
     async def set_schedule(
         self, group_id: int, hour: int, minute: int, text: str, *, owner_id: int
     ) -> None:

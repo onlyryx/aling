@@ -118,13 +118,15 @@ def test_panel_recreation_does_not_reset_daily_claim(schedule_runtime):
     client = schedule_runtime.client
     schedule_runtime.claim_today(34)
     assert client.delete("/api/admin/groups/34/schedule").status_code == 200
-    assert (
-        client.put(
-            "/api/admin/groups/34/schedule",
-            json={"hour": 12, "minute": 0, "text": "fictional scheduled text"},
-        ).status_code
-        == 200
+    recreated = client.put(
+        "/api/admin/groups/34/schedule",
+        json={"hour": 12, "minute": 0, "text": "fictional scheduled text"},
     )
+    assert recreated.status_code == 200
+    assert recreated.json()["schedule"]["last_attempted_date"] == "2026-10-10"
+    listed = client.get("/api/admin/schedules")
+    item = next(item for item in listed.json()["items"] if item["group_id"] == 34)
+    assert item["schedule"]["last_attempted_date"] == "2026-10-10"
     assert schedule_runtime.run_today_again() == 0
     assert schedule_runtime.recorder == []
 
