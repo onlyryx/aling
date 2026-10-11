@@ -32,3 +32,13 @@ The initial `uv run --frozen --extra dev pytest tests/webui/test_schedules.py -q
 `git diff --check`: passed.
 
 The schedule module was retrieved through the authenticated test app. I did not run interactive browser acceptance; it remains for the controller's review. No real QQ/NapCat login, credential, external service or deployment was used.
+
+## Fix round 1 — restore schedule deletion after proactive save
+
+Controller browser acceptance found that saving a group's proactive switch left an existing schedule's Delete button disabled until manual refresh. The proactive save's `finally` block now restores that button from the refreshed `hasSchedule` state, matching schedule-save cleanup.
+
+Added `tests/webui/fixtures/schedules_save_state.mjs` and a Python runner. The fixture executes the real page module with a small DOM adapter: it first checks that a failed schedule save and a subsequent refresh preserve the unsaved time/message, then saves the proactive switch and asserts the existing plan's Delete button remains enabled.
+
+RED: `node tests/webui/fixtures/schedules_save_state.mjs src/aling/webui/static/pages/schedules.js` failed at the regression assertion (`true !== false`) before the fix. GREEN: the same command passed after the fix and reported that drafts remain preserved and Delete remains enabled.
+
+Focused verification: `uv run --frozen --extra dev pytest tests/webui/test_schedules.py tests/test_scheduler.py tests/test_integration.py -q` — 19 passed, 1 existing Starlette TestClient/httpx deprecation warning. Ruff check passed; Ruff format check reported 85 files already formatted; schedule page module syntax check and `git diff --check` passed.

@@ -97,6 +97,7 @@ export function createSchedules(container) {
       } finally {
         view.busy = false;
         controls.forEach((control) => { control.disabled = false; });
+        view.card.querySelector('[data-action="delete-schedule"]').disabled = !view.hasSchedule;
       }
     });
     area("groups").append(card);

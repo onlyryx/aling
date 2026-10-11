@@ -134,3 +134,26 @@ def test_schedule_page_module_is_served(schedule_runtime):
     assert response.status_code == 200
     assert "inactive_reasons" in response.text
     assert "last_attempted_date" in response.text
+
+
+def test_schedule_page_save_state_survives_failures_and_group_toggle():
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the schedule page event handlers")
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [
+            node,
+            str(root / "tests/webui/fixtures/schedules_save_state.mjs"),
+            str(root / "src/aling/webui/static/pages/schedules.js"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
