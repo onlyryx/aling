@@ -12,7 +12,9 @@
   临时目录独立安装 wheel，确认 HTML、CSS 和四页 JS 模块存在、模块引用可解析且静态资源没有 CDN URL。
 - 基础 Compose 和叠加 `compose.webui.yaml` 的两种 `config --quiet` 均通过，使用 `.env.example`。
 - 现有 OneBot 集成测试继续覆盖认证 WebSocket、`/ping`、`/status` 和 `/health`/`/ready`；新增面板集成
-  测试覆盖启用时四组 API、禁用时面板 404、健康路由保留及虚构密钥/提示词不进入响应或日志。
+  测试覆盖启用时四组 API、禁用时面板 404、健康路由保留。认证 WebSocket 用例发送真实格式的虚构
+  普通私聊事件（无 `group_id`、非命令），确认后续响应仍为 `/ping`；随后检查实际面板概览响应与
+  通过应用隐私过滤器收集的机器人日志都不包含该私聊正文。
 - 本机 Docker CLI 与 Compose 可用（Compose v5.5.1），但 Docker Engine 未运行，`docker info` 因
   Docker socket 不存在失败；因此没有运行镜像构建或容器验收。未覆盖浏览器手工验收，留给本轮主代理。
 - 所有自动验收只用测试内的虚构 Runtime/凭据和临时 SQLite/素材目录；没有读取真实 `.env`，没有连接

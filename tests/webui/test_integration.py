@@ -28,7 +28,6 @@ def test_panel_routes_share_runtime_and_keep_health_when_disabled(
         "fictional-model-key",
         "fictional-onebot-key",
         "fictional private persona instruction",
-        "fictional private message",
     ):
         assert private_value not in response.text
         assert private_value not in caplog.text
