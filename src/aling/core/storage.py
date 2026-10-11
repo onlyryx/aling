@@ -145,6 +145,31 @@ class GroupSettingsStore:
 
         await asyncio.to_thread(write)
 
+    async def list_configured_group_ids(self) -> list[int]:
+        def read() -> list[int]:
+            with closing(sqlite3.connect(self.path, timeout=5)) as conn:
+                rows = conn.execute(
+                    "SELECT group_id FROM group_settings UNION "
+                    "SELECT group_id FROM group_feature_settings UNION "
+                    "SELECT group_id FROM proactive_schedules ORDER BY group_id"
+                ).fetchall()
+            return [row[0] for row in rows]
+
+        return await asyncio.to_thread(read)
+
+    async def get_group_feature_settings(self, group_id: int) -> dict[str, bool]:
+        _validate_group_id(group_id)
+
+        def read() -> dict[str, bool]:
+            with closing(sqlite3.connect(self.path, timeout=5)) as conn:
+                rows = conn.execute(
+                    "SELECT feature, enabled FROM group_feature_settings WHERE group_id = ?",
+                    (group_id,),
+                ).fetchall()
+            return {feature: bool(enabled) for feature, enabled in rows}
+
+        return await asyncio.to_thread(read)
+
     async def get_global_feature_settings(self) -> dict[str, bool]:
         def read() -> dict[str, bool]:
             with closing(sqlite3.connect(self.path, timeout=5)) as conn:

@@ -12,7 +12,9 @@ from starlette.staticfiles import StaticFiles
 from aling.runtime import Runtime
 from aling.webui.auth import PanelAuth
 from aling.webui.boundary import AdminBoundaryMiddleware, is_admin_path
+from aling.webui.routes_features import router as features_router
 from aling.webui.routes_session import router
+from aling.webui.routes_status import router as status_router
 
 
 def mount_webui(app: FastAPI, runtime: Runtime) -> None:
@@ -37,6 +39,8 @@ def mount_webui(app: FastAPI, runtime: Runtime) -> None:
         return await result if isawaitable(result) else result
 
     app.include_router(router)
+    app.include_router(status_router)
+    app.include_router(features_router)
     app.mount(
         "/webui", StaticFiles(directory=str(files("aling.webui").joinpath("static")), html=True)
     )

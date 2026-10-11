@@ -1,4 +1,6 @@
 import { api, setSession } from "./api.js";
+import { createOverview } from "./pages/overview.js";
+import { createFeatures } from "./pages/features.js";
 
 const byId = (id) => document.getElementById(id);
 const loginView = byId("login-view");
@@ -42,20 +44,41 @@ document.addEventListener("keydown", (event) => {
     closeNav(); byId("nav-toggle").focus();
   }
 });
-document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => {
-  const [title, subtitle, heading, description] = pages[button.dataset.page];
+let activePage = "overview";
+const pageFactories = { overview: createOverview, features: createFeatures };
+const pageInstances = new Map();
+function openPage(page) {
+  activePage = page;
+  const [title, subtitle, heading, description] = pages[page];
   byId("page-title").textContent = title;
   byId("breadcrumb-page").textContent = title;
   byId("page-subtitle").textContent = subtitle;
+  const factory = pageFactories[page];
+  byId("placeholder").hidden = Boolean(factory);
   byId("placeholder-title").textContent = heading;
   byId("placeholder-description").textContent = description;
+  if (factory && !pageInstances.has(page)) {
+    const container = document.createElement("div");
+    byId("page-content").append(container);
+    pageInstances.set(page, { container, ...factory(container) });
+  }
+  for (const [name, instance] of pageInstances) instance.container.hidden = name !== page;
   document.querySelectorAll(".nav-item").forEach((item) => {
-    item.classList.toggle("selected", item === button);
-    if (item === button) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current");
+    const current = item.dataset.page === page;
+    item.classList.toggle("selected", current);
+    if (current) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current");
   });
   closeNav();
-  byId("main").focus();
+  if (!panelView.hidden && !document.hidden) pageInstances.get(page)?.refresh();
+}
+document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => {
+  openPage(button.dataset.page); byId("main").focus();
 }));
+function refreshVisiblePage() {
+  if (!panelView.hidden && !document.hidden) pageInstances.get(activePage)?.refresh();
+}
+setInterval(refreshVisiblePage, 15000);
+document.addEventListener("visibilitychange", refreshVisiblePage);
 function showLogin(message = "") {
   panelView.hidden = true;
   loginView.hidden = false;
@@ -71,6 +94,7 @@ function showPanel(session) {
   loginView.hidden = true;
   panelView.hidden = false;
   byId("panel-notice").hidden = true;
+  openPage(activePage);
   byId("main").focus();
 }
 document.addEventListener("panel-session-expired", () => {

@@ -40,8 +40,9 @@ class Runtime:
         store = GroupSettingsStore(settings.database_path)
         ai = OpenAIClient(settings, transport=ai_transport)
         web = SafeWebClient(timeout=settings.web_timeout, max_bytes=settings.web_max_bytes)
-        chat = ChatService(settings, ai)
-        web_read = WebReadService(settings, web, chat)
+        status = ConnectionStatus()
+        chat = ChatService(settings, ai, status=status)
+        web_read = WebReadService(settings, web, chat, status=status)
         memes = LocalMemeProvider(settings.meme_dir)
         sessions = SessionStore(
             ttl_seconds=settings.ai_session_ttl,
@@ -62,7 +63,7 @@ class Runtime:
             proactive,
             ProactiveScheduler(settings, store, proactive),
             features,
-            ConnectionStatus(),
+            status,
             sessions,
             ToolRegistry(features, web_read, memes, timeout=settings.ai_tool_timeout),
         )

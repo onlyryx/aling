@@ -75,3 +75,44 @@ def panel_client(panel_factory):
     assert response.status_code == 200
     client.headers.update({"Origin": ORIGIN, "X-CSRF-Token": response.json()["csrf_token"]})
     return client
+
+
+@pytest.fixture
+def runtime_panel(tmp_path):
+    from contextlib import asynccontextmanager
+
+    from aling.runtime import Runtime
+    from aling.webui import mount_webui
+
+    settings = Settings(
+        _env_file=None,
+        onebot_access_token="fictional-onebot-key",
+        database_path=tmp_path / "runtime.db",
+        meme_dir=tmp_path / "memes",
+        superusers={12345},
+        allowed_groups={34},
+        ai_api_key="fictional-model-key",
+        ai_model="fictional-model",
+        ai_base_url="https://model.invalid/private",
+        ai_system_prompt="fictional private persona instruction",
+        webui_enabled=True,
+        webui_admin_token=TOKEN,
+        webui_owner_id=12345,
+        webui_origin=ORIGIN,
+    )
+    runtime = Runtime.create(settings)
+
+    @asynccontextmanager
+    async def lifespan(app):
+        await runtime.startup()
+        yield
+        await runtime.shutdown()
+
+    app = FastAPI(lifespan=lifespan)
+    mount_webui(app, runtime)
+    with TestClient(app, base_url=ORIGIN) as client:
+        response = client.post(
+            "/api/admin/session", json={"token": TOKEN}, headers={"Origin": ORIGIN}
+        )
+        client.headers.update({"Origin": ORIGIN, "X-CSRF-Token": response.json()["csrf_token"]})
+        yield client, runtime

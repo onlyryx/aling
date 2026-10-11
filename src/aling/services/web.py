@@ -13,6 +13,7 @@ from aling.core.extensions import WebPage
 from aling.core.logging import log
 from aling.core.rate_limit import RateLimiter
 from aling.services.http import read_limited
+from aling.services.status import ConnectionStatus
 
 
 @dataclass(frozen=True)
@@ -129,8 +130,11 @@ class SafeWebClient:
 
 
 class WebReadService:
-    def __init__(self, settings, client: SafeWebClient, chat) -> None:
+    def __init__(
+        self, settings, client: SafeWebClient, chat, *, status: ConnectionStatus | None = None
+    ) -> None:
         self.settings, self.client, self.chat = settings, client, chat
+        self.status = status
         self.limiter = RateLimiter(3, 20)
 
     async def read(
@@ -140,7 +144,14 @@ class WebReadService:
             raise PermissionError("Group is outside configured scope")
         if not self.limiter.allow(group_id):
             raise RuntimeError("Web reading rate limit reached")
-        page = await self.client.parse(url)
+        try:
+            page = await self.client.parse(url)
+        except Exception as exc:
+            if self.status is not None:
+                self.status.record_diagnostic(
+                    "web", "read_failed", exception_type=type(exc).__name__
+                )
+            raise
         parts = urlsplit(page.url)
         source = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))[:500]
         excerpt = page.text[:1200] or "网页没有提取到可读正文。"
@@ -158,6 +169,10 @@ class WebReadService:
                         return WebReadResult(page.title, source, summary[:1200], True)
                 except Exception as exc:
                     log.warning("Web summary failed ({})", type(exc).__name__)
+                    if self.status is not None:
+                        self.status.record_diagnostic(
+                            "web", "summary_failed", exception_type=type(exc).__name__
+                        )
         return WebReadResult(page.title, source, excerpt, False)
 
 
