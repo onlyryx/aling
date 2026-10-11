@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -73,8 +73,9 @@ class Settings(BaseSettings):
     def valid_webui(self) -> "Settings":
         if not self.webui_enabled:
             return self
-        if not re.fullmatch(r"[A-Za-z0-9_-]{43,}", self.webui_admin_token.get_secret_value()):
-            raise ValueError("Panel login key must contain at least 43 URL-safe characters")
+        # Leave JSON framing room within the 1KiB login body limit.
+        if not re.fullmatch(r"[A-Za-z0-9_-]{43,1000}", self.webui_admin_token.get_secret_value()):
+            raise ValueError("Panel login key must contain 43 to 1000 URL-safe characters")
         if self.webui_owner_id is None or self.webui_owner_id not in self.superusers:
             raise ValueError("Panel owner must belong to SUPERUSERS")
         parts = urlsplit(self.webui_origin)
@@ -99,6 +100,11 @@ class Settings(BaseSettings):
             or (parts.scheme == "http" and parts.hostname not in {"127.0.0.1", "localhost", "::1"})
         ):
             raise ValueError("Panel origin must be an exact HTTPS or loopback HTTP origin")
+        if self.webui_origin != str(HttpUrl(self.webui_origin)).removesuffix("/"):
+            raise ValueError(
+                "Panel origin must use canonical browser form: lowercase hosts, "
+                "no default or zero-padded ports"
+            )
         return self
 
     @model_validator(mode="after")

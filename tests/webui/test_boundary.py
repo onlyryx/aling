@@ -256,3 +256,41 @@ async def test_upload_limit_streams_after_route_can_claim_concurrency_slot(panel
     assert reads == [True, True]
     assert messages[0]["status"] == 413
     assert (b"x-content-type-options", b"nosniff") in messages[0]["headers"]
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://panel.example",
+        "https://panel.example:8443",
+        "http://localhost",
+        "http://localhost:8080",
+        "http://[::1]:8080",
+    ],
+)
+def test_canonical_browser_origin_can_login_and_make_authenticated_write(panel_factory, origin):
+    client = panel_factory(origin=origin)
+    response = client.post("/api/admin/session", json={"token": TOKEN}, headers={"Origin": origin})
+    assert response.status_code == 200
+    result = client.put(
+        "/api/admin/features/global/web",
+        content=b"{}",
+        headers={
+            "Origin": origin,
+            "X-CSRF-Token": response.json()["csrf_token"],
+        },
+    )
+    assert result.status_code == 200
+    assert result.json()["owner_id"] == 12345
+
+
+def test_maximum_configured_key_fits_login_body_and_authenticates(panel_factory):
+    import json
+
+    token = "a" * 1000
+    client = panel_factory(token=token)
+    body = json.dumps({"token": token}).encode()
+    assert len(body) == 1013
+    response = client.post("/api/admin/session", content=body, headers={"Origin": ORIGIN})
+    assert response.status_code == 200
+    assert client.get("/api/admin/session").json()["owner_id"] == 12345

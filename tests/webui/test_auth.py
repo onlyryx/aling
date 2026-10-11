@@ -231,3 +231,42 @@ def test_preserves_existing_sync_non_admin_validation_handler(panel_factory):
     response = client.get("/validation", params={"value": "not-an-int"})
     assert response.status_code == 418
     assert response.json() == {"detail": "Existing public validation handler"}
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://PANEL.example:443",
+        "https://PANEL.example",
+        "https://panel.example:443",
+        "http://localhost:80",
+        "http://localhost:08080",
+        "https://panel.example:08443",
+    ],
+)
+def test_enabled_panel_rejects_noncanonical_browser_origin(origin):
+    with pytest.raises(ValidationError, match="canonical"):
+        Settings(
+            _env_file=None,
+            onebot_access_token="fake",
+            superusers={12},
+            webui_enabled=True,
+            webui_admin_token=TOKEN,
+            webui_owner_id=12,
+            webui_origin=origin,
+        )
+
+
+@pytest.mark.parametrize("length", [1001, 1024])
+def test_enabled_panel_rejects_keys_that_exceed_transport_compatible_maximum(length):
+    token = "a" * length
+    with pytest.raises(ValidationError, match="43.*1000") as exc:
+        Settings(
+            _env_file=None,
+            onebot_access_token="fake",
+            superusers={12},
+            webui_enabled=True,
+            webui_admin_token=token,
+            webui_owner_id=12,
+        )
+    assert token not in str(exc.value)

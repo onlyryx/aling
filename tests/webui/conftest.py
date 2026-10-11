@@ -13,7 +13,9 @@ ORIGIN = "http://127.0.0.1:8080"
 
 @pytest.fixture
 def panel_factory(tmp_path):
-    def create(*, enabled=True, origin=ORIGIN, client_ip="127.0.0.1", validation_handler=None):
+    def create(
+        *, enabled=True, origin=ORIGIN, client_ip="127.0.0.1", validation_handler=None, token=TOKEN
+    ):
         from aling.webui import mount_webui
 
         settings = Settings(
@@ -23,7 +25,7 @@ def panel_factory(tmp_path):
             meme_dir=tmp_path / "memes",
             superusers={12345},
             webui_enabled=enabled,
-            webui_admin_token=TOKEN,
+            webui_admin_token=token,
             webui_owner_id=12345,
             webui_origin=origin,
         )
