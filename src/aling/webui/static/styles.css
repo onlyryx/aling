@@ -86,6 +86,20 @@ nav { display: grid; gap: 6px; }
   .login-card { padding: 28px 24px; }
   h1 { font-size: 25px; }
 }
+.schedule-card { padding: 22px; margin-top: 16px; }
+.schedule-card h3 { margin: 0; font-size: 17px; }
+.schedule-card .card-heading { align-items: baseline; }
+.schedule-fields { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 18px; }
+.schedule-fields label { margin: 18px 0 8px; }
+.schedule-fields input, .schedule-fields textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--background); color: var(--text); font: inherit; }
+.schedule-message textarea { resize: vertical; }
+.schedule-message .help { margin: 6px 0; }
+.proactive-form { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--border); margin-top: 18px; padding-top: 16px; }
+.proactive-form label { display: flex; align-items: center; gap: 8px; margin: 0 auto 0 0; font-weight: 500; }
+.proactive-form input { width: 20px; height: 20px; accent-color: var(--primary); }
+.schedule-conditions { color: var(--muted); overflow-wrap: anywhere; }
+.warning { color: var(--warning); }
+@media (max-width: 767px) { .schedule-card { padding: 18px; } .schedule-fields { grid-template-columns: minmax(0, 1fr); gap: 2px; } .proactive-form { align-items: stretch; flex-direction: column; } .proactive-form label { margin: 0; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
 .status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
 .status-card, .section-card { padding: 24px; }
