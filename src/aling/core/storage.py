@@ -38,6 +38,7 @@ class SearchSourceRule:
     kind: str = "page"
     port: int | None = None
     allowed_query_params: frozenset[str] = frozenset()
+    scheme: str = "https"
 
 
 @dataclass(frozen=True)
@@ -635,10 +636,12 @@ def _validate_deployment_policy(policy: DeploymentSearchPolicy) -> DeploymentSea
         if (
             not isinstance(source.purpose, str)
             or not isinstance(source.kind, str)
+            or not isinstance(source.scheme, str)
+            or source.scheme not in {"http", "https"}
             or source.purpose not in policy.allowed_purposes
             or source.kind not in {"page", "image"}
         ):
-            raise ValueError("Invalid source purpose or kind")
+            raise ValueError("Invalid source purpose, scheme, or kind")
         if source.kind == "image" and source.purpose != "ordinary_meme":
             raise ValueError("Image sources require ordinary_meme purpose")
         if not isinstance(source.host, str):

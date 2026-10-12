@@ -667,6 +667,8 @@ def _canonical_source_url(value: str, source: SearchSourceRule) -> str:
         port = parts.port
     except (ValueError, UnicodeError):
         raise SearchPolicyDenied("Malformed result URL") from None
+    if parts.scheme.lower() != source.scheme:
+        raise SearchPolicyDenied("Result scheme is not approved")
     approved_host = _canonical_host(source.host)
     if host != approved_host:
         raise SearchPolicyDenied("Result host is not approved")

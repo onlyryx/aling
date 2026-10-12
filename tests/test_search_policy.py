@@ -348,7 +348,6 @@ async def test_classifier_missing_and_policy_change_during_classify_fail_closed(
             "python",
         ),
         ("https://docs.python.org:443/3", "https://docs.python.org/3", "python"),
-        ("http://docs.python.org:80/3/", "http://docs.python.org/3/", "python"),
         (
             "https://docs.python.org/3/library?id=42&lang=zh",
             "https://docs.python.org/3/library?id=42&lang=zh",
@@ -368,6 +367,32 @@ async def test_classifier_missing_and_policy_change_during_classify_fail_closed(
 )
 async def test_result_url_canonicalization_preserves_page_identity(gate, url, want, source):
     assert await gate.service.validate_result_url(url, SearchPurpose.TECHNICAL, source) == want
+
+
+async def test_source_scheme_is_pinned_and_http_must_be_explicitly_configured(gate):
+    with pytest.raises(SearchPolicyDenied):
+        await gate.service.validate_result_url(
+            "http://docs.python.org/3/", SearchPurpose.TECHNICAL, "python"
+        )
+
+    policy = await gate.store.get_deployment_search_policy()
+    await gate.store.set_deployment_search_policy(
+        replace(
+            policy,
+            sources=policy.sources
+            + (SearchSourceRule("legacy-http", "technical", "legacy.example.org", scheme="http"),),
+        )
+    )
+    assert (
+        await gate.service.validate_result_url(
+            "http://legacy.example.org/docs", SearchPurpose.TECHNICAL, "legacy-http"
+        )
+        == "http://legacy.example.org/docs"
+    )
+    with pytest.raises(SearchPolicyDenied):
+        await gate.service.validate_result_url(
+            "https://legacy.example.org/docs", SearchPurpose.TECHNICAL, "legacy-http"
+        )
 
 
 @pytest.mark.parametrize(

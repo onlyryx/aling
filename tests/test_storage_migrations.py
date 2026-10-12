@@ -1,9 +1,14 @@
 import asyncio
+import json
 import sqlite3
 
 import pytest
 
-from aling.core.storage import GroupSettingsStore
+from aling.core.storage import (
+    DeploymentSearchPolicy,
+    GroupSettingsStore,
+    SearchSourceRule,
+)
 
 
 async def test_migration_preserves_legacy_group_settings_and_is_repeatable(tmp_path):
@@ -85,6 +90,28 @@ async def test_one_schedule_claim_succeeds_per_group_and_local_date(tmp_path):
 
     assert sorted(claims) == [False, True]
     assert await store.claim_schedule(34, "2026-10-11")
+
+
+async def test_legacy_search_sources_default_to_https(tmp_path):
+    path = tmp_path / "legacy-search-policy.db"
+    store = GroupSettingsStore(path)
+    await store.initialize()
+    await store.set_deployment_search_policy(
+        DeploymentSearchPolicy(sources=(SearchSourceRule("docs", "technical", "docs.example.org"),))
+    )
+    with sqlite3.connect(path) as conn:
+        (document,) = conn.execute(
+            "SELECT policy_json FROM deployment_search_policy WHERE singleton=1"
+        ).fetchone()
+        data = json.loads(document)
+        del data["sources"][0]["scheme"]
+        conn.execute(
+            "UPDATE deployment_search_policy SET policy_json=? WHERE singleton=1",
+            (json.dumps(data),),
+        )
+
+    policy = await store.get_deployment_search_policy()
+    assert policy.sources[0].scheme == "https"
 
 
 async def test_schedule_update_keeps_delivery_claim_and_delete_removes_schedule(tmp_path):
