@@ -113,3 +113,46 @@ async def test_unknown_page_charset_falls_back_to_utf8():
         assert "可读正文" in (await client.parse("https://example.org")).text
     finally:
         await client.aclose()
+
+
+async def test_explicit_url_keeps_web_gate_without_search_sources_classifier_or_ai(tmp_path):
+    from aling.core.permissions import PermissionContext
+    from aling.core.storage import GroupSettingsStore
+    from aling.services.features import FeatureService
+    from aling.services.tools import ToolRegistry
+
+    config = settings(superusers={12}, allowed_groups={34})
+    store = GroupSettingsStore(tmp_path / "explicit-read.db")
+    await store.initialize()
+    features = FeatureService(config, store)
+    await features.initialize()
+    await features.set_global(12, "web", True)
+    await store.set_feature_enabled(34, "web", True)
+    calls = []
+
+    async def resolver(host, port):
+        assert host == "unlisted.example.org" and port == 443
+        return ["93.184.216.34"]
+
+    def endpoint(request):
+        calls.append(request)
+        return httpx.Response(
+            200, headers={"content-type": "text/html"}, text="<article>Explicit body</article>"
+        )
+
+    client = SafeWebClient(transport=httpx.MockTransport(endpoint), resolver=resolver)
+    tools = ToolRegistry(features, WebReadService(config, client, chat=None), memes=None)
+    try:
+        context = PermissionContext(12, 34, "member")
+        assert not await features.enabled(34, "ai")
+        assert not await features.enabled(34, "search")
+        assert not (await store.get_deployment_search_policy()).sources
+        result = await tools.call("web_read", {"url": "https://unlisted.example.org/path"}, context)
+        assert result["ok"] and "Explicit body" in result["excerpt"]
+        await store.set_feature_enabled(34, "web", False)
+        assert not (
+            await tools.call("web_read", {"url": "https://unlisted.example.org/path"}, context)
+        )["ok"]
+        assert len(calls) == 1
+    finally:
+        await client.aclose()
