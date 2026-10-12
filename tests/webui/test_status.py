@@ -109,6 +109,28 @@ def test_groups_read_saved_allowed_snapshot_without_implicit_qq(runtime_panel):
     assert bot.calls == ["get_group_list"]
 
 
+def test_search_status_read_does_not_probe_upstream(runtime_panel, monkeypatch):
+    client, runtime = runtime_panel
+
+    async def unexpected(*args, **kwargs):
+        raise AssertionError("GET status must not call the search backend")
+
+    monkeypatch.setattr(runtime.search_client, "search", unexpected)
+    result = client.get("/api/admin/search-status")
+    assert result.status_code == 200
+    assert result.json() == {
+        "configured": True,
+        "internal_reachable": None,
+        "json_enabled": None,
+        "upstream_results": None,
+        "last_verified": None,
+        "category": None,
+        "result_count": 0,
+        "code": "unknown",
+        "exception_type": None,
+    }
+
+
 async def test_disconnect_during_qq_refresh_cannot_publish_online():
     status = ConnectionStatus()
     started, finish = asyncio.Event(), asyncio.Event()

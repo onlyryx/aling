@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from secrets import token_urlsafe
 from time import monotonic
@@ -62,6 +62,7 @@ class FeatureService:
         self._online_meme_global_revision = 0
         self._online_meme_group_revisions: dict[int, int] = {}
         self._search_consent = False
+        self.revoke_search_tasks: Callable[[int | None], Awaitable[None]] | None = None
         self._memory_confirmations: dict[str, _PendingMemory] = {}
         self._lock = asyncio.Lock()
 
@@ -84,6 +85,17 @@ class FeatureService:
 
     async def ai_tools_enabled(self) -> bool:
         return await self.store.get_ai_tools_enabled(self.settings.ai_tools_enabled)
+
+    async def set_search_consent(self, owner_id: int, acknowledged: bool) -> None:
+        if owner_id not in self.settings.superusers:
+            raise PermissionError("Only configured superusers can change search consent")
+        if type(acknowledged) is not bool:
+            raise ValueError("Consent state must be boolean")
+        async with self._lock:
+            await self._complete_mutation(self.store.set_search_consent(owner_id, acknowledged))
+            self._search_consent = acknowledged
+            if not acknowledged and self.revoke_search_tasks is not None:
+                await self.revoke_search_tasks(None)
 
     def online_meme_revision(self, group_id: int) -> tuple[int, int]:
         """Return in-process revocation generations for online-meme dependencies."""
@@ -276,6 +288,9 @@ class FeatureService:
             self._global_overrides[feature] = enabled
         if ticket is not None:
             del self._memory_confirmations[ticket]
+        if not enabled and feature in {"ai", "search", "web", "meme", "online_meme"}:
+            if self.revoke_search_tasks is not None:
+                await self.revoke_search_tasks(group_id)
 
     def _require_memory_available(self) -> None:
         if not self.globally_enabled("memory"):

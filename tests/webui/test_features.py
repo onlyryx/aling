@@ -147,7 +147,7 @@ def test_safe_save_failure_and_group_id_validation(runtime_panel, monkeypatch):
 
 def test_page_modules_are_served_inside_panel(runtime_panel):
     client, _ = runtime_panel
-    for path in ["overview", "features"]:
+    for path in ["overview", "features", "search"]:
         response = client.get(f"/webui/pages/{path}.js")
         assert response.status_code == 200
         assert "adminFetch" in response.text

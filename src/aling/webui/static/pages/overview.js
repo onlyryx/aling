@@ -15,6 +15,7 @@ export function createOverview(container) {
       <section class="card status-card"><h2>QQ 状态</h2><p data-value="qq"></p><p class="help" data-value="queried"></p><button class="primary" data-action="qq" type="button">刷新 QQ 状态</button></section>
     </div>
     <p class="error" data-value="error" role="alert" hidden></p>
+    <section class="card section-card"><h2>受控联网</h2><p data-value="search"></p><p class="help">联网服务的详细诊断与来源策略请查看“联网设置”。</p></section>
     <section class="card section-card"><h2>模型与人格</h2><p data-value="model"></p><p class="muted" data-value="persona"></p><p class="help">此处仅显示配置状态，模型和人格配置由部署者维护。</p></section>
     <section class="card section-card"><h2>最近诊断</h2><p class="help">固定错误类别，最多保留 100 条、24 小时。不会显示聊天内容或原始日志。</p><ul class="diagnostic-list" data-value="diagnostics"></ul></section>`;
   const field = (name) => container.querySelector(`[data-value="${name}"]`);
@@ -33,6 +34,10 @@ export function createOverview(container) {
       field("queried").textContent = `查询时间 ${time(data.qq.queried_at)}；结果 30 秒后显示未知。`;
       field("model").textContent = data.model.configured ? `已配置 · ${data.model.name}` : "尚未配置模型";
       field("persona").textContent = data.persona.configured ? "人格指令已配置" : "人格指令未配置";
+      const search = await adminFetch("/search-status");
+      field("search").textContent = search.last_verified
+        ? `服务 ${search.internal_reachable === true ? "可达" : search.internal_reachable === false ? "不可达" : "未知"} · JSON ${search.json_enabled === true ? "可用" : search.json_enabled === false ? "未启用" : "未知"} · 最近检查 ${time(search.last_verified)}`
+        : "尚无联网服务探测记录";
       const list = field("diagnostics");
       list.replaceChildren();
       for (const item of data.diagnostics) {

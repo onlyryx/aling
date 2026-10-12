@@ -1,7 +1,7 @@
 import { adminFetch } from "../api.js";
 
-const names = { ai: "AI 聊天", web: "网页读取", meme: "表情包", memory: "短期记忆" };
-const reasons = { global_off: "全局开关已关闭", group_off: "本群开关已关闭", ai_credentials_missing: "模型凭据尚未配置", global_ai_off: "全局 AI 已关闭", group_ai_off: "本群 AI 已关闭", scope_restricted: "本群不在允许范围" };
+const names = { ai: "AI 聊天", web: "网页读取", meme: "表情包", memory: "短期记忆", search: "联网搜索", online_meme: "在线表情" };
+const reasons = { global_off: "全局开关已关闭", group_off: "本群开关已关闭", ai_credentials_missing: "模型凭据尚未配置", global_ai_off: "全局 AI 已关闭", group_ai_off: "本群 AI 已关闭", global_meme_off: "全局表情包已关闭", group_meme_off: "本群表情包已关闭", search_consent_required: "部署者尚未确认联网数据流", scope_restricted: "本群不在允许范围" };
 export function createFeatures(container) {
   container.innerHTML = `
     <section class="card section-card"><h2>全局功能</h2><p class="help">全局开关决定功能是否可供群启用。保存状态与实际生效状态分别显示。</p><div data-area="global"></div></section>

@@ -10,6 +10,7 @@ _DIAGNOSTICS = {
     "ai": {"request_failed", "tool_turn_failed"},
     "web": {"summary_failed", "read_failed"},
     "storage": {"read_failed", "save_failed"},
+    "search": {"probe_failed"},
 }
 _EXCEPTION_TYPES = {
     "HTTPError",

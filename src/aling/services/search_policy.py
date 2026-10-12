@@ -75,6 +75,7 @@ class _TaskRecord:
     results: dict[str, tuple[str, str, str]] | None = None
     issued: dict[int, SearchTaskContext] | None = None
     lock: asyncio.Lock | None = None
+    owner_task: asyncio.Task | None = None
 
 
 _MAX_TASKS = 2048
@@ -203,6 +204,7 @@ class SearchPolicyService:
             results={},
             issued={id(context): context},
             lock=asyncio.Lock(),
+            owner_task=asyncio.current_task(),
         )
         self._tasks[context.task_id] = record
         self._tasks.move_to_end(context.task_id)
@@ -581,6 +583,21 @@ class SearchPolicyService:
 
     def revoke_task(self, task_id: str) -> None:
         self._tasks.pop(task_id, None)
+
+    async def revoke_group_tasks(self, group_id: int | None = None) -> None:
+        """Cancel tasks bound to a group (or all groups) and wait for cleanup."""
+        current = asyncio.current_task()
+        cancelled = []
+        for task_id, record in list(self._tasks.items()):
+            if group_id is not None and record.context.group_id != group_id:
+                continue
+            self._tasks.pop(task_id, None)
+            task = record.owner_task
+            if task is not None and task is not current and not task.done():
+                task.cancel()
+                cancelled.append(task)
+        if cancelled:
+            await asyncio.gather(*cancelled, return_exceptions=True)
 
 
 def _normalize_query(value: str) -> str:

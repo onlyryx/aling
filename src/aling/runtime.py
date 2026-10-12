@@ -88,6 +88,12 @@ class Runtime:
             MemeImageClient(timeout=settings.web_timeout),
             admission=admission,
         )
+
+        async def revoke_search_tasks(group_id: int | None) -> None:
+            await search_policy.revoke_group_tasks(group_id)
+            await online_memes.expire()
+
+        features.revoke_search_tasks = revoke_search_tasks
         return cls(
             settings,
             store,

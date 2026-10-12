@@ -16,6 +16,7 @@ from aling.webui.routes_features import router as features_router
 from aling.webui.routes_memes import UploadAdmission
 from aling.webui.routes_memes import router as memes_router
 from aling.webui.routes_schedules import router as schedules_router
+from aling.webui.routes_search import router as search_router
 from aling.webui.routes_session import router
 from aling.webui.routes_status import router as status_router
 
@@ -45,8 +46,24 @@ def mount_webui(app: FastAPI, runtime: Runtime) -> None:
     app.include_router(router)
     app.include_router(status_router)
     app.include_router(features_router)
+    app.include_router(search_router)
     app.include_router(memes_router)
     app.include_router(schedules_router)
     app.mount(
         "/webui", StaticFiles(directory=str(files("aling.webui").joinpath("static")), html=True)
     )
+    search_policy = getattr(runtime, "search_policy", None)
+    if search_policy is not None:
+        search_policy.panel_auth = app.state.panel_auth
+    search_origin = getattr(runtime.settings, "search_origin", "")
+    app.state.panel_search_status = {
+        "configured": bool(search_origin),
+        "internal_reachable": None,
+        "json_enabled": None,
+        "upstream_results": None,
+        "last_verified": None,
+        "category": None,
+        "result_count": 0,
+        "code": "unknown",
+        "exception_type": None,
+    }
