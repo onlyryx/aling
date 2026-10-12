@@ -137,6 +137,32 @@ async def test_meme_uses_own_gate_and_image_sources_without_web_or_search(gate):
         await gate.service.revalidate(authorized, "read", source_id=result)
 
 
+async def test_initial_task_handle_can_read_its_authorized_search_result(gate):
+    from aling.core.permissions import PermissionContext
+    from aling.services.tools import ToolRegistry
+
+    await gate.features.set_ai_tools_enabled(1, True)
+    context = await gate.service.create_task_from_event(event(text="Python docs"))
+    authorized = await gate.service.authorize_online(context, "Python docs", "search")
+    result_id = await gate.service.register_result(
+        authorized, "https://docs.python.org/3/", "python"
+    )
+
+    class WebRead:
+        async def read(self, url, *, group_id):
+            return type("ReadResult", (), {"title": "Python", "source": url, "text": "Docs"})()
+
+    tools = ToolRegistry(gate.features, WebRead(), object(), search_policy=gate.service)
+    result = await tools.call(
+        "web_read",
+        {"result_id": result_id},
+        PermissionContext(12, 34, "member"),
+        task_context=context,
+    )
+    assert result["ok"]
+    assert result["url"] == "https://docs.python.org/3/"
+
+
 @pytest.mark.parametrize(
     "purpose",
     [

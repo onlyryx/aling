@@ -500,10 +500,11 @@ class SearchPolicyService:
     async def revalidate(
         self, context: SearchTaskContext, operation: str, source_id: str | None = None
     ) -> None:
+        record = self._record(context)
+        context = record.context
         deployment, group = await self._gate(context, operation)
         if context.authorized_at is None or context.purpose is None:
             raise SearchPolicyDenied("Task has no online authorization")
-        record = self._record(context)
         if operation in {"read", "image"}:
             if record.operation != ("online_meme" if operation == "image" else "search"):
                 raise SearchPolicyDenied("Result operation is outside this task's authorization")
@@ -567,6 +568,7 @@ class SearchPolicyService:
         self, context: SearchTaskContext, result_id: str, *, operation: str = "read"
     ) -> str:
         record = self._record(context)
+        context = record.context
         item = (record.results or {}).get(result_id)
         if item is None:
             raise SearchPolicyDenied("Result is not bound to this task")

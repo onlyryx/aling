@@ -235,6 +235,7 @@ async def test_tool_flow_runs_multiple_bounded_rounds_and_preserves_protocol():
                     "tool_calls": [
                         {
                             "id": "s",
+                            "type": "function",
                             "function": {"name": "web_search", "arguments": '{"query_id":"qid"}'},
                         }
                     ],
@@ -244,6 +245,7 @@ async def test_tool_flow_runs_multiple_bounded_rounds_and_preserves_protocol():
                 "tool_calls": [
                     {
                         "id": "r",
+                        "type": "function",
                         "function": {"name": "web_read", "arguments": '{"result_id":"result-1"}'},
                     }
                 ],
@@ -302,10 +304,12 @@ async def test_tool_protocol_rejects_duplicate_ids_with_explicit_results():
                     "tool_calls": [
                         {
                             "id": "same",
+                            "type": "function",
                             "function": {"name": "meme_search", "arguments": '{"query":"shrug"}'},
                         },
                         {
                             "id": "same",
+                            "type": "function",
                             "function": {"name": "meme_search", "arguments": '{"query":"shrug"}'},
                         },
                     ],
@@ -352,6 +356,7 @@ async def test_tool_protocol_rejects_reused_ids_across_rounds():
                     "tool_calls": [
                         {
                             "id": "reused",
+                            "type": "function",
                             "function": {
                                 "name": "meme_search",
                                 "arguments": '{"query":"shrug"}',
@@ -433,6 +438,7 @@ async def test_ai_executes_at_most_two_validated_tools_and_never_system_calls():
                 "tool_calls": [
                     {
                         "id": "1",
+                        "type": "function",
                         "function": {
                             "name": "web_read",
                             "arguments": '{"url":"https://example.org"}',
@@ -440,10 +446,12 @@ async def test_ai_executes_at_most_two_validated_tools_and_never_system_calls():
                     },
                     {
                         "id": "2",
+                        "type": "function",
                         "function": {"name": "meme_search", "arguments": '{"query":"shrug"}'},
                     },
                     {
                         "id": "3",
+                        "type": "function",
                         "function": {"name": "system_exec", "arguments": '{"cmd":"whoami"}'},
                     },
                 ],
@@ -533,6 +541,15 @@ async def test_unsupported_tool_provider_falls_back_to_single_turn_chat():
         {"tool_calls": [None]},
         {
             "tool_calls": [
+                {
+                    "id": "wrong-type",
+                    "type": "other",
+                    "function": {"name": "meme_search", "arguments": '{"query":"shrug"}'},
+                }
+            ]
+        },
+        {
+            "tool_calls": [
                 {"id": "1", "function": {"name": "web_read", "arguments": "{}"}},
                 {"id": "2", "function": {"name": "meme_search", "arguments": "{}"}},
                 None,
@@ -565,20 +582,26 @@ async def test_malformed_tool_provider_response_fails_safely(message):
     class Registry:
         definitions = ToolRegistry.definitions
 
+        def __init__(self):
+            self.calls = []
+
         async def definitions_for(self, group_id):
             return self.definitions
 
         async def call(self, *args, **kwargs):
+            self.calls.append(args[0])
             return {"ok": False, "error": "test"}
 
     class Features:
         async def ai_tools_enabled(self):
             return True
 
+    registry = Registry()
     outcome = await ChatService(options, Client(), features=Features()).reply_with_tools(
-        34, 12, "test", Registry()
+        34, 12, "test", registry
     )
     assert outcome.text
+    assert registry.calls == []
 
 
 async def test_model_tools_are_filtered_by_current_group_features(tmp_path):

@@ -406,7 +406,11 @@ class ChatService:
     ):
         assistant_calls, tool_messages = [], []
         for index, call in enumerate(calls):
-            valid_shape = isinstance(call, dict) and isinstance(call.get("function"), dict)
+            valid_shape = (
+                isinstance(call, dict)
+                and call.get("type") == "function"
+                and isinstance(call.get("function"), dict)
+            )
             call_id = call.get("id") if valid_shape else None
             duplicate = isinstance(call_id, str) and call_id in seen_call_ids
             invalid_id = not isinstance(call_id, str) or not call_id or len(call_id) > 100
