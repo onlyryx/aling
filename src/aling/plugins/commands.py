@@ -8,6 +8,7 @@ from nonebot.plugin import PluginMetadata
 
 from aling.core.logging import log
 from aling.core.permissions import PermissionContext, require_group_admin
+from aling.core.storage import FEATURES
 from aling.runtime import get_runtime
 from aling.services.features import FeatureDisabledError, MemoryConfirmationRequired
 from aling.services.help import render_help
@@ -16,8 +17,9 @@ __plugin_meta__ = PluginMetadata(
     name="基础指令",
     description="帮助、状态检查、功能开关与定时消息配置",
     usage=(
-        "/help、/ping、/status（仅超级用户）、/feature ai|web|meme|memory on|off/confirm、"
-        "/feature global ai|web|meme|memory on|off（仅超级用户）、"
+        "/help、/ping、/status（仅超级用户）、"
+        "/feature ai|web|meme|memory|search|online_meme on|off（memory 开启需 confirm）、"
+        "/feature global ai|web|meme|memory|search|online_meme on|off（仅超级用户）、"
         "/proactive on|off|schedule HH:MM <文本>|schedule off|schedule status"
     ),
     supported_adapters={"~onebot.v11"},
@@ -57,11 +59,7 @@ async def help_handler(event: MessageEvent) -> None:
     if isinstance(event, GroupMessageEvent):
         enabled = await runtime.features.available(event.group_id)
     else:
-        enabled = {
-            name
-            for name in ("ai", "web", "meme", "memory")
-            if runtime.features.globally_enabled(name)
-        }
+        enabled = {name for name in FEATURES if runtime.features.globally_enabled(name)}
     await help_command.finish(MessageSegment.text(render_help(get_loaded_plugins(), enabled)))
 
 
@@ -162,12 +160,15 @@ async def _schedule_command(event: GroupMessageEvent, raw: str) -> None:
 @feature_command.handle()
 async def feature_handler(event: MessageEvent, args: Annotated[Message, CommandArg()]) -> None:
     parts = args.extract_plain_text().strip().lower().split()
-    features = {"ai", "web", "meme", "memory"}
+    features = FEATURES
     runtime = get_runtime()
     if parts and parts[0] == "global":
         if len(parts) != 3 or parts[1] not in features or parts[2] not in {"on", "off"}:
             await feature_command.finish(
-                MessageSegment.text("用法：/feature global ai|web|meme|memory on|off（仅超级用户）")
+                MessageSegment.text(
+                    "用法：/feature global ai|web|meme|memory|search|online_meme on|off"
+                    "（仅超级用户）"
+                )
             )
         if event.user_id not in runtime.settings.superusers:
             await feature_command.finish(MessageSegment.text("仅配置的超级用户可操作全局功能。"))
@@ -193,7 +194,9 @@ async def feature_handler(event: MessageEvent, args: Annotated[Message, CommandA
         or (parts[1] == "confirm" and parts[0] != "memory")
     ):
         await feature_command.finish(
-            MessageSegment.text("用法：/feature ai|web|meme|memory on|off（记忆启用需先确认）")
+            MessageSegment.text(
+                "用法：/feature ai|web|meme|memory|search|online_meme on|off（记忆启用需先确认）"
+            )
         )
     context = PermissionContext(event.user_id, event.group_id, event.sender.role or "member")
     try:

@@ -37,7 +37,7 @@ class Runtime:
     def create(
         cls, settings: Settings, ai_transport: httpx.AsyncBaseTransport | None = None
     ) -> "Runtime":
-        store = GroupSettingsStore(settings.database_path)
+        store = GroupSettingsStore(settings.database_path, superusers=settings.superusers)
         ai = OpenAIClient(settings, transport=ai_transport)
         web = SafeWebClient(timeout=settings.web_timeout, max_bytes=settings.web_max_bytes)
         status = ConnectionStatus()

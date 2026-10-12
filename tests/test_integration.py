@@ -231,6 +231,31 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
             assert "示例插件已加载" in exchange(event("/example", role="admin"))[0]["data"]["text"]
             exchange(event("/feature global meme on"))
             assert "开启" in exchange(event("/feature meme on", role="admin"))[0]["data"]["text"]
+            for feature in ("search", "online_meme"):
+                denied = exchange(event(f"/feature global {feature} on", user=13, role="owner"))[0][
+                    "data"
+                ]["text"]
+                assert "超级用户" in denied
+                blocked = exchange(event(f"/feature global {feature} on"))[0]["data"]["text"]
+                assert "acknowledgement" in blocked
+            import asyncio
+
+            asyncio.run(runtime.store.set_search_consent(12, True))
+            for feature in ("search", "online_meme"):
+                assert "开启" in exchange(event(f"/feature global {feature} on"))[0]["data"]["text"]
+                denied = exchange(event(f"/feature {feature} on", user=13))[0]["data"]["text"]
+                assert "管理员" in denied
+                assert (
+                    "开启"
+                    in exchange(event(f"/feature {feature} on", role="admin"))[0]["data"]["text"]
+                )
+                assert (
+                    "关闭" in exchange(event(f"/feature global {feature} off"))[0]["data"]["text"]
+                )
+                assert (
+                    "关闭"
+                    in exchange(event(f"/feature {feature} off", role="admin"))[0]["data"]["text"]
+                )
             meme = exchange(event("/meme hello"))
             assert [segment["type"] for segment in meme] == ["text", "image"]
             assert "[CQ:at,qq=all]" in meme[0]["data"]["text"]

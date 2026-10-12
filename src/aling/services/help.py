@@ -15,6 +15,14 @@ def render_help(plugins: Iterable[Plugin], enabled_features: set[str]) -> str:
         entries.append((metadata.name, metadata.usage.strip()))
     lines = ["阿零（ALING）· Jack233_ / onlyryx", *(usage for _, usage in sorted(entries))]
     lines.append("主动发言还受全局开关限制。")
+    lines.extend(
+        [
+            "/feature global search|online_meme on|off：超级用户管理联网全局许可。",
+            "/feature search|online_meme on|off：群主、管理员在全局许可内管理本群。",
+            "受控联网需本群开启 AI 用途检查；查询会发送给模型与搜索上游。"
+            "超级用户须先确认外部数据流，再开启联网；普通成员不能修改来源。",
+        ]
+    )
     if "memory" in enabled_features:
         lines.extend(
             [

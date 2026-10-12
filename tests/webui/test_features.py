@@ -30,7 +30,14 @@ def test_disabled_dependency_and_global_lists(runtime_panel):
     result = client.put("/api/admin/groups/34/features/web", json={"enabled": True})
     assert result.status_code == 409
     assert result.json()["detail"] == "feature_unavailable"
-    assert set(client.get("/api/admin/features/global").json()) == {"ai", "web", "meme", "memory"}
+    assert set(client.get("/api/admin/features/global").json()) == {
+        "ai",
+        "web",
+        "meme",
+        "memory",
+        "search",
+        "online_meme",
+    }
     assert client.get("/api/admin/features/global/web").json()["blocked_by"] == ["global_off"]
     assert (
         "scope_restricted"

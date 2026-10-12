@@ -59,21 +59,35 @@ class FeatureService:
         self.sessions = sessions
         self.clock = clock
         self._global_overrides: dict[str, bool] = {}
+        self._search_consent = False
         self._memory_confirmations: dict[str, _PendingMemory] = {}
         self._lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         self._global_overrides = await self.store.get_global_feature_settings()
+        self._search_consent = await self.store.get_search_consent()
+        await self.store.get_ai_tools_enabled(self.settings.ai_tools_enabled)
 
     def globally_enabled(self, feature: str) -> bool:
         if feature not in FEATURES:
             raise ValueError("Unknown feature")
-        configured = feature not in {"ai", "memory"} or self.settings.ai_configured
-        return (
-            configured
-            and self._global_overrides.get(feature, False)
-            and (feature != "memory" or self.globally_enabled("ai"))
+        needs_ai = feature in {"ai", "memory", "search", "online_meme"}
+        return bool(
+            self._global_overrides.get(feature, False)
+            and (not needs_ai or self.settings.ai_configured)
+            and (feature not in {"memory", "search", "online_meme"} or self.globally_enabled("ai"))
+            and (feature not in {"search", "online_meme"} or self._search_consent)
+            and (feature != "online_meme" or self.globally_enabled("meme"))
         )
+
+    async def ai_tools_enabled(self) -> bool:
+        return await self.store.get_ai_tools_enabled(self.settings.ai_tools_enabled)
+
+    async def set_ai_tools_enabled(self, owner_id: int, enabled: bool) -> None:
+        if owner_id not in self.settings.superusers:
+            raise PermissionError("Only configured superusers can change AI tools")
+        async with self._lock:
+            await self._complete_mutation(self.store.set_ai_tools_enabled(owner_id, enabled))
 
     async def enabled(self, group_id: int, feature: str) -> bool:
         return (await self.state(group_id, feature)).effective
@@ -87,10 +101,23 @@ class FeatureService:
             blocked_by = []
             if not global_requested:
                 blocked_by.append("global_off")
-            if feature in {"ai", "memory"} and not self.settings.ai_configured:
+            if (
+                feature in {"ai", "memory", "search", "online_meme"}
+                and not self.settings.ai_configured
+            ):
                 blocked_by.append("ai_credentials_missing")
-            if feature == "memory" and not self._global_overrides.get("ai", False):
-                blocked_by.append("global_ai_off")
+            dependencies = {
+                "memory": ("ai",),
+                "search": ("ai",),
+                "online_meme": ("ai", "meme"),
+            }.get(feature, ())
+            for dependency in dependencies:
+                if not self._global_overrides.get(dependency, False):
+                    blocked_by.append(f"global_{dependency}_off")
+            if feature in {"search", "online_meme"}:
+                self._search_consent = await self.store.get_search_consent()
+                if not self._search_consent:
+                    blocked_by.append("search_consent_required")
             if group_id is not None:
                 group_requested = await self.store.is_feature_enabled(
                     group_id, feature, global_enabled=True, default_enabled=False
@@ -99,10 +126,11 @@ class FeatureService:
                     blocked_by.append("scope_restricted")
                 if not group_requested:
                     blocked_by.append("group_off")
-                if feature == "memory" and not await self.store.is_feature_enabled(
-                    group_id, "ai", global_enabled=True, default_enabled=False
-                ):
-                    blocked_by.append("group_ai_off")
+                for dependency in dependencies:
+                    if not await self.store.is_feature_enabled(
+                        group_id, dependency, global_enabled=True, default_enabled=False
+                    ):
+                        blocked_by.append(f"group_{dependency}_off")
             return FeatureState(global_requested, group_requested, not blocked_by, blocked_by)
 
     async def available(self, group_id: int) -> set[str]:
@@ -117,6 +145,8 @@ class FeatureService:
         if feature == "memory" and enabled:
             raise MemoryConfirmationRequired("Use the memory confirmation flow")
         async with self._lock:
+            if feature in {"search", "online_meme"}:
+                self._search_consent = await self.store.get_search_consent()
             if enabled and not self.globally_enabled(feature):
                 raise FeatureDisabledError("Global feature switch is off")
             await self._complete_mutation(self._persist_feature(context.group_id, feature, enabled))
@@ -129,6 +159,13 @@ class FeatureService:
         if type(enabled) is not bool:
             raise ValueError("Feature state must be boolean")
         async with self._lock:
+            if feature in {"search", "online_meme"}:
+                self._search_consent = await self.store.get_search_consent()
+                if enabled and not self._search_consent:
+                    raise FeatureDisabledError(
+                        "External data-flow acknowledgement is required "
+                        "before enabling controlled search"
+                    )
             if enabled and feature in {"ai", "memory"} and not self.settings.ai_configured:
                 raise FeatureDisabledError(
                     "AI_API_KEY and AI_MODEL must be configured before enabling AI"

@@ -382,3 +382,31 @@ async def test_cancellation_during_cleanup_retains_serialization(
     assert await sessions.get(34, 12) == []
     with pytest.raises(feature_errors.MemoryConfirmationRequired):
         await features.confirm_memory(context, scope="qq", ticket=confirmation.ticket)
+
+
+@pytest.mark.parametrize("feature", ["search", "online_meme"])
+async def test_online_global_gates_need_persisted_external_data_acknowledgement(tmp_path, feature):
+    from aling.core.storage import GroupSettingsStore
+    from aling.services.features import FeatureService
+
+    settings = Settings(
+        _env_file=None,
+        onebot_access_token="test",
+        superusers={12},
+        ai_api_key="fake-test-key",
+        ai_model="test-model",
+    )
+    store = GroupSettingsStore(tmp_path / "settings.db", superusers=settings.superusers)
+    await store.initialize()
+    features = FeatureService(settings, store)
+    await features.initialize()
+    with pytest.raises(feature_errors.FeatureDisabledError, match="acknowledgement"):
+        await features.set_global(12, feature, True)
+    assert feature not in await store.get_global_feature_settings()
+    await store.set_search_consent(12, True)
+    await features.set_global(12, feature, True)
+    restarted = FeatureService(settings, store)
+    await restarted.initialize()
+    assert (await restarted.state(None, feature)).global_requested
+    await store.set_search_consent(12, False)
+    assert "search_consent_required" in (await restarted.state(None, feature)).blocked_by
