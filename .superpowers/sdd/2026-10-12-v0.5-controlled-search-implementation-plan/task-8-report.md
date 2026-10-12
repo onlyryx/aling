@@ -33,7 +33,14 @@
 
 - The independent whole-branch review identified unsafe wrapped OAuth callback queries reaching classification, `/search` task registration before the input cap and retention of the event object, a tool-enabled capability retry after provider HTTP rejection, and ignored persisted group meme mode. Wrapped and percent-encoded callback URLs/secrets now fail preflight before classifier or SearXNG calls. `/search` rejects queries over 100 characters before task registration; task records keep only the bounded query and immutable principal snapshot. A first-round model HTTP status error now returns a fixed message stating that no online operation ran. Omitted `/meme` mode uses the stored group mode; explicit modes bypass that lookup, and a failed policy read returns a clear unavailable message without searching.
 - Added regression tests for classifier/search suppression, task size/retention/principal binding, provider rejection, and stored `auto`/`online` meme defaults with explicit override.
-- Final affected suite: `uv run --frozen --extra dev pytest tests/test_search_policy.py tests/test_search.py tests/test_ai_tools.py tests/test_memes.py -q` — **197 passed**.
-- Final full suite: `uv run --frozen --extra dev pytest -q` — **556 passed**, existing Starlette/httpx deprecation warning.
+- Final affected suite: `uv run --frozen --extra dev pytest tests/test_search_policy.py tests/test_search.py tests/test_ai_tools.py tests/test_memes.py -q` — **199 passed**.
+- Final full suite: `uv run --frozen --extra dev pytest -q` — **558 passed**, existing Starlette/httpx deprecation warning.
 - Final Ruff check, format check, and `git diff --check` passed. No live services, real `.env`, account, or database were used.
 - Review-fix commit is separate from the Task 8 implementation commit; awaiting a fresh read-only re-review.
+
+### Nested-encoding follow-up
+
+- A fresh re-review found that one percent-decoding pass still allowed doubly encoded callback URLs and `code`/`state` secrets. Added two end-to-end regressions; before the fix each reached the classifier, while the search client remained uncalled.
+- `_unsafe_query` now checks every decoded form until stable, bounded by the 100-character input cap, and fails closed if decoding does not stabilize within that bound.
+- Focused search and policy tests passed (**138 passed**); the final affected suite passed (**199 passed**) and the full suite passed (**558 passed**). Ruff check/format and `git diff --check` passed.
+- Follow-up commit is separate and awaits another fresh independent read-only review.

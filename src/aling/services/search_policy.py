@@ -646,15 +646,16 @@ def _unsafe_query(query: str) -> bool:
         return True
     if re.search(r"(?:\bsite\s*：|！{1,2}[a-z]|[！!]{1,2}[a-z])", query, re.I):
         return True
-    decoded_query = unquote(query)
-    if (
-        _EMBEDDED_URL.search(query)
-        or _EMBEDDED_URL.search(decoded_query)
-        or _AUTH_CALLBACK_SECRET.search(query)
-        or _AUTH_CALLBACK_SECRET.search(decoded_query)
-    ):
-        return True
-    return False
+    decoded_query = query
+    for _ in range(_MAX_QUERY + 1):
+        if _EMBEDDED_URL.search(decoded_query) or _AUTH_CALLBACK_SECRET.search(decoded_query):
+            return True
+        next_query = unquote(decoded_query)
+        if next_query == decoded_query:
+            return False
+        decoded_query = next_query
+    # If decoding has not stabilized within the input-length bound, reject it.
+    return True
 
 
 def _canonical_host(value: str) -> str:
