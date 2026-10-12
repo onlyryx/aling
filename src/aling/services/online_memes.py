@@ -45,6 +45,7 @@ class _TemporaryMeme:
     task_id: str
     source_id: str
     policy_revision: tuple[int, int]
+    feature_revision: tuple[int, int]
     content: bytes
     mime_type: str
     expires_at: float
@@ -97,6 +98,7 @@ class TemporaryMemeStore:
         image_bytes: bytes,
         expires_at: float | None = None,
         *,
+        feature_revision: tuple[int, int] = (0, 0),
         reservation: str | None = None,
         task_context: Any = None,
         result_id: str = "",
@@ -128,6 +130,7 @@ class TemporaryMemeStore:
             task_id,
             source_id,
             policy_revision,
+            feature_revision,
             validated.content,
             validated.mime_type,
             expiry,
@@ -167,7 +170,12 @@ class TemporaryMemeStore:
         return ValidatedImage(item.content, item.mime_type)
 
     async def revoke_policy(
-        self, group_id: int, current_revision: tuple[int, int], allowed_source_ids: set[str]
+        self,
+        group_id: int,
+        current_revision: tuple[int, int],
+        allowed_source_ids: set[str],
+        *,
+        current_feature_revision: tuple[int, int] | None = None,
     ) -> int:
         await self.expire()
         doomed = [
@@ -175,7 +183,12 @@ class TemporaryMemeStore:
             for key, item in self._items.items()
             if item.group_id == group_id
             and (
-                item.policy_revision != current_revision or item.source_id not in allowed_source_ids
+                item.policy_revision != current_revision
+                or item.source_id not in allowed_source_ids
+                or (
+                    current_feature_revision is not None
+                    and item.feature_revision != current_feature_revision
+                )
             )
         ]
         for key in doomed:
@@ -340,6 +353,7 @@ class OnlineMemeService:
     async def _online(self, context, query: str, budget: TaskBudget) -> TemporaryMemeRef | None:
         from aling.services.search_policy import SearchPolicyDenied, SearchPurpose
 
+        feature_revision = self._feature_revision(context.group_id)
         authorized = await self.policy.authorize_online(
             context, query, "online_meme", budget=budget
         )
@@ -370,22 +384,26 @@ class OnlineMemeService:
             )
         budget.apply_policy_limits(limits)
         quota_limits = SearchQuotaLimits.from_policy(limits)
-        try:
-            async with self.admission.slot(
-                group_id=context.group_id,
-                user_id=context.user_id,
-                limits=quota_limits,
-            ):
-                hits = await self.search.search(
-                    authorized.normalized_query or query,
-                    category="images",
-                    language="auto",
-                    safe_search=2,
-                    limit=min(3, budget.limits.max_results),
-                    budget=budget,
-                )
-        except Exception:
-            raise
+        async with self.admission.slot(
+            group_id=context.group_id,
+            user_id=context.user_id,
+            limits=quota_limits,
+        ):
+            hits = await self.search.search(
+                authorized.normalized_query or query,
+                category="images",
+                language="auto",
+                safe_search=2,
+                limit=min(3, budget.limits.max_results),
+                budget=budget,
+            )
+            return await self._fetch_approved_image(
+                context, authorized, purpose, page_sources, hits, budget, feature_revision
+            )
+
+    async def _fetch_approved_image(
+        self, context, authorized, purpose, page_sources, hits, budget, feature_revision
+    ) -> TemporaryMemeRef | None:
         selected = None
         for hit in hits:
             if (
@@ -435,6 +453,8 @@ class OnlineMemeService:
             await self.policy.revalidate(authorized, "online_meme", source_id)
             await self.policy.revalidate(authorized, "image", result_id)
             await self.policy.resolve_result(authorized, result_id, operation="image")
+            if self._feature_revision(context.group_id) != feature_revision:
+                raise PermissionError("Online meme feature policy changed")
             return await self.store.put(
                 context.group_id,
                 context.user_id,
@@ -443,6 +463,7 @@ class OnlineMemeService:
                 context.policy_revision,
                 image.content,
                 self.store.clock() + self.store.ttl_seconds,
+                feature_revision=feature_revision,
                 reservation=reservation,
                 task_context=authorized,
                 result_id=result_id,
@@ -457,12 +478,14 @@ class OnlineMemeService:
         async def recheck(item: _TemporaryMeme) -> bool:
             if item.task_context is None or not item.result_id:
                 return False
+            if self._feature_revision(group_id) != item.feature_revision:
+                return False
             await self.policy.revalidate(item.task_context, "online_meme", item.source_id)
             await self.policy.revalidate(item.task_context, "image", item.result_id)
             url = await self.policy.resolve_result(
                 item.task_context, item.result_id, operation="image"
             )
-            return bool(url)
+            return bool(url) and self._feature_revision(group_id) == item.feature_revision
 
         return await self.store.read_for_send(
             opaque_id, group_id, user_id, recheck, expected_task_id=task_id
@@ -489,9 +512,17 @@ class OnlineMemeService:
                 if group.source_ids is None or source.source_id in group.source_ids
             }
             removed += await self.store.revoke_policy(
-                group_id, (deployment.revision, group.revision), allowed
+                group_id,
+                (deployment.revision, group.revision),
+                allowed,
+                current_feature_revision=self._feature_revision(group_id),
             )
         return removed
+
+    def _feature_revision(self, group_id: int) -> tuple[int, int]:
+        features = getattr(self.policy, "features", None)
+        revision = getattr(features, "online_meme_revision", None)
+        return revision(group_id) if callable(revision) else (0, 0)
 
 
 def _validate_static_image(

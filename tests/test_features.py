@@ -29,6 +29,37 @@ async def test_feature_requires_group_opt_in_within_global_allowance(tmp_path):
     assert await features.enabled(34, "web")
 
 
+async def test_online_meme_revision_changes_for_global_and_group_toggles(tmp_path):
+    settings = Settings(
+        _env_file=None,
+        onebot_access_token="test",
+        ai_api_key="fictional",
+        ai_model="test",
+        allowed_groups={34},
+        superusers={99},
+    )
+    store = GroupSettingsStore(tmp_path / "settings.db", superusers={99})
+    await store.initialize()
+    await store.set_search_consent(99, True)
+    features = FeatureService(settings, store)
+    await features.initialize()
+    for feature in ("ai", "meme", "online_meme"):
+        await features.set_global(99, feature, True)
+    owner = PermissionContext(99, 34, "owner")
+    await features.set(owner, "online_meme", True)
+
+    start = features.online_meme_revision(34)
+    await features.set(owner, "online_meme", False)
+    await features.set(owner, "online_meme", True)
+    after_group_toggle = features.online_meme_revision(34)
+    await features.set_global(99, "online_meme", False)
+    await features.set_global(99, "online_meme", True)
+    after_global_toggle = features.online_meme_revision(34)
+
+    assert after_group_toggle == (start[0], start[1] + 2)
+    assert after_global_toggle == (start[0] + 2, after_group_toggle[1])
+
+
 async def test_feature_setting_requires_admin_and_cannot_enable_global_off(tmp_path):
     settings = Settings(_env_file=None, onebot_access_token="test")
     store = GroupSettingsStore(tmp_path / "settings.db")

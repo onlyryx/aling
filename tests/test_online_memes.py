@@ -18,7 +18,7 @@ from aling.services.online_memes import (
     TemporaryMemeStore,
 )
 from aling.services.search import SearchHit
-from aling.services.search_budget import TaskBudget
+from aling.services.search_budget import AdmissionRejected, SearchAdmission, TaskBudget
 from aling.services.search_policy import SearchPolicyService, SearchPurpose
 
 
@@ -51,6 +51,7 @@ async def deny_page(_):
 class FakePolicy:
     def __init__(self):
         self.revoked = False
+        self.features = SimpleNamespace(online_meme_revision=lambda _group_id: (0, 0))
         self.urls = {}
         self.authorized = []
         self.store = SimpleNamespace(
@@ -451,6 +452,125 @@ async def test_online_policy_revoked_before_cache_insertion_discards_download():
         await service.search_and_download(fake_context(), "猫猫", "online", TaskBudget.start())
     assert await service.store.size() == (0, 0)
     assert not service.store._reservations
+
+
+async def test_group_admission_slot_covers_slow_image_download():
+    started, release = asyncio.Event(), asyncio.Event()
+    requests = 0
+    image = png_bytes()
+
+    async def handler(_request):
+        nonlocal requests
+        requests += 1
+        if requests == 1:
+            started.set()
+            await release.wait()
+        return httpx.Response(200, content=image, headers={"content-type": "image/png"})
+
+    admission = SearchAdmission()
+    service = OnlineMemeService(
+        FakeLocalMemes(),
+        FakePolicy(),
+        FakeSearch(
+            [SearchHit("cat", "https://page.example/cat", "", "https://media.example/a.png")]
+        ),
+        MemeImageClient(
+            transport=httpx.MockTransport(handler),
+            resolver=lambda *_: asyncio.sleep(0, result=["8.8.8.8"]),
+        ),
+        admission=admission,
+        page_source_validator=allow_policy,
+    )
+    first = asyncio.create_task(
+        service.search_and_download(fake_context(), "猫猫", "online", TaskBudget.start())
+    )
+    await asyncio.wait_for(started.wait(), timeout=1)
+    try:
+        with pytest.raises(AdmissionRejected):
+            await service.search_and_download(
+                fake_context(user_id=13, task_id="task-b"),
+                "猫猫",
+                "online",
+                TaskBudget.start(),
+            )
+    finally:
+        release.set()
+    assert await first
+
+
+async def test_feature_disable_reenable_during_download_discards_stale_task():
+    image = png_bytes()
+    policy = FakePolicy()
+    policy.features.revision = (0, 0)
+
+    async def handler(_request):
+        # One disable and one re-enable changes the generation even though the
+        # effective feature state is back to on when the response arrives.
+        policy.features.revision = (0, 2)
+        return httpx.Response(200, content=image, headers={"content-type": "image/png"})
+
+    service = OnlineMemeService(
+        FakeLocalMemes(),
+        policy,
+        FakeSearch(
+            [SearchHit("cat", "https://page.example/cat", "", "https://media.example/a.png")]
+        ),
+        MemeImageClient(
+            transport=httpx.MockTransport(handler),
+            resolver=lambda *_: asyncio.sleep(0, result=["8.8.8.8"]),
+        ),
+        page_source_validator=allow_policy,
+    )
+    policy.features.online_meme_revision = lambda _group_id: policy.features.revision
+
+    with pytest.raises(PermissionError, match="feature policy changed"):
+        await service.search_and_download(fake_context(), "猫猫", "online", TaskBudget.start())
+    assert await service.store.size() == (0, 0)
+
+    ref = await service.store.put(
+        34,
+        12,
+        "task-a",
+        "media",
+        (1, 1),
+        image,
+        feature_revision=(0, 0),
+        task_context=fake_context(),
+        result_id="r0",
+    )
+    with pytest.raises(PermissionError):
+        await service.read_for_send(ref.opaque_id, 34, 12, task_id="task-a")
+    assert not await service.store.contains(ref.opaque_id)
+
+
+async def test_feature_disable_reenable_during_send_recheck_rejects_cached_resource():
+    policy = FakePolicy()
+    policy.features.revision = (0, 0)
+    policy.features.online_meme_revision = lambda _group_id: policy.features.revision
+    policy.urls["r0"] = "https://media.example/a.png"
+
+    async def resolve_during_toggle(_context, result_id, *, operation="read"):
+        assert operation == "image"
+        policy.features.revision = (0, 2)
+        return policy.urls[result_id]
+
+    policy.resolve_result = resolve_during_toggle
+    service = OnlineMemeService(FakeLocalMemes(), policy, FakeSearch([]), MemeImageClient())
+    ref = await service.store.put(
+        34,
+        12,
+        "task-a",
+        "media",
+        (1, 1),
+        png_bytes(),
+        feature_revision=(0, 0),
+        task_context=fake_context(),
+        result_id="r0",
+    )
+
+    with pytest.raises(PermissionError):
+        await service.read_for_send(ref.opaque_id, 34, 12, task_id="task-a")
+    assert not await service.store.contains(ref.opaque_id)
 
 
 async def test_real_search_policy_requires_approved_page_and_image_hosts(tmp_path):

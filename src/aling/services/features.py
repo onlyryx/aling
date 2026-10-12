@@ -59,6 +59,8 @@ class FeatureService:
         self.sessions = sessions
         self.clock = clock
         self._global_overrides: dict[str, bool] = {}
+        self._online_meme_global_revision = 0
+        self._online_meme_group_revisions: dict[int, int] = {}
         self._search_consent = False
         self._memory_confirmations: dict[str, _PendingMemory] = {}
         self._lock = asyncio.Lock()
@@ -82,6 +84,10 @@ class FeatureService:
 
     async def ai_tools_enabled(self) -> bool:
         return await self.store.get_ai_tools_enabled(self.settings.ai_tools_enabled)
+
+    def online_meme_revision(self, group_id: int) -> tuple[int, int]:
+        """Return in-process revocation generations for online-meme dependencies."""
+        return self._online_meme_global_revision, self._online_meme_group_revisions.get(group_id, 0)
 
     async def set_ai_tools_enabled(self, owner_id: int, enabled: bool) -> None:
         if owner_id not in self.settings.superusers:
@@ -257,6 +263,13 @@ class FeatureService:
             await self.store.set_global_feature_enabled(feature, enabled)
         else:
             await self.store.set_feature_enabled(group_id, feature, enabled)
+        if feature in {"ai", "meme", "online_meme"}:
+            if group_id is None:
+                self._online_meme_global_revision += 1
+            else:
+                self._online_meme_group_revisions[group_id] = (
+                    self._online_meme_group_revisions.get(group_id, 0) + 1
+                )
         if feature in {"ai", "memory"} and not enabled:
             await self._clear_memory(group_id)
         if group_id is None:
