@@ -40,6 +40,9 @@ Preflight result: no conflict requiring a design change. The spec is authoritati
 
 ## Rulings
 
+- Task 5: SearXNG image-category `img_src` is the only accepted candidate image URL; the ordinary result `url` stays a separately validated source page. Missing image URLs are skipped instead of inferred. Both sources require their own explicit matching rules, and result-page/image port guards reject non-standard ports before network activity.
+- Task 5 scope extension: parent approved adding optional `SearchHit.image_url` parsing in `services/search.py` and a send-time opaque-resource resolution check in `plugins/ai_chat.py`. The latter does not change AI orchestration.
+
 ## Completed task gates
 
 - Task 1 implementer: `v05_task1_impl`; commit `4fa3c12b7a12de917770d09b89a44065cbbfb9ae` (`feat: add persisted search policy gates`). Focused tests 59 passed; full pytest 326 passed; Ruff and diff checks passed.
@@ -52,6 +55,10 @@ Preflight result: no conflict requiring a design change. The spec is authoritati
 - Task 3 implementer: `v05_task3_impl`; commit `d0707fd` (`feat: add bounded SearXNG search`). Full suite → 483 passed; Ruff, format, Compose merge validation, and diff checks passed. SearXNG container startup/log behavior remains unverified because no container was started. Report: `task-3-report.md`.
 - Task 3 reviewer: `v05_task3_review`; found cooldown pruning used the instance default rather than per-policy duration. Fixed in `5abc185` (`fix: honor configured search cooldowns`) with a regression test; full suite → 484 passed, existing warning only; Ruff/format/diff checks passed.
 - Task 3 fix reviewer: `v05_cooldown_fix_review`; approved with no findings. Task 3 gate is complete.
+- Task 4 implementer: `v05_task4_impl`; commit `18525a4` (`feat: support bounded multi-round search tools`). Full suite → 492 passed; focused suites → 45 passed; Ruff, format, and diff checks passed. Report: `task-4-report.md`.
+- Task 4 reviewer: `v05_task4_review`; found (1) stale initial context prevented search result reading and (2) non-function tool call types were executable. Fixed in `1b3c93f` (`fix: preserve authorized search task context`) with real policy/ToolRegistry flow and malformed-type tests. Focused + policy suites → 176 passed; full suite → 494 passed; Ruff/format/diff checks passed.
+- Task 4 fix reviewer: `v05_task4_fix_review`; approved with no findings; focused `test_ai_tools` + `test_search_policy` → 151 passed. Task 4 gate is complete.
+- Task 5 implementer: `v05_task5_impl`; commits `b55ffe6` (`feat: add safe online meme lookup`) and `94d2e88` (`fix: preserve online meme quotas and revocation`). Focused + compatibility suites → 124 passed; full suite → 530 passed with the existing Starlette/httpx deprecation warning; Ruff check, Ruff format, and `git diff --check` passed. Fresh review found two P2 issues (admission lifetime and feature off→on revocation), both fixed; follow-up identified a send-time interleaving and approved the final post-await generation check. Report: `task-5-report.md`. Task 6+ remain unstarted.
 
 - Task 3 implementation: `v05_task3_impl`; focused/full suite → 483 passed, one existing Starlette/httpx warning; Ruff, formatting, Compose config and diff checks passed. Added bounded budgets/admission, fixed-origin SearXNG POST client, `/search`, optional Compose profile and integration coverage. Report: `task-3-report.md`. Parent-approved narrow Runtime ownership extension is recorded in the report. Actual SearXNG startup/container query-log behavior remains unverified because no SearXNG container was started; reviewer should account for this limitation.
 - Task 4 implementation: `v05_task4_impl`; focused suite → 45 passed; full suite → 492 passed with the existing Starlette/httpx deprecation warning; Ruff, formatting, and diff checks passed. Added shared scheduler-backed model request accounting, bounded multi-round tool protocol, task-context-bound search/read operations, SQLite AI-tools state, and dynamic capability context. Report: `task-4-report.md`. Awaiting independent review; Tasks 5+ remain unstarted.
