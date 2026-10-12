@@ -70,3 +70,11 @@ Preflight result: no conflict requiring a design change. The spec is authoritati
 
 - Task 3 implementation: `v05_task3_impl`; focused/full suite → 483 passed, one existing Starlette/httpx warning; Ruff, formatting, Compose config and diff checks passed. Added bounded budgets/admission, fixed-origin SearXNG POST client, `/search`, optional Compose profile and integration coverage. Report: `task-3-report.md`. Parent-approved narrow Runtime ownership extension is recorded in the report. Actual SearXNG startup/container query-log behavior remains unverified because no SearXNG container was started; reviewer should account for this limitation.
 - Task 4 implementation: `v05_task4_impl`; focused suite → 45 passed; full suite → 492 passed with the existing Starlette/httpx deprecation warning; Ruff, formatting, and diff checks passed. Added shared scheduler-backed model request accounting, bounded multi-round tool protocol, task-context-bound search/read operations, SQLite AI-tools state, and dynamic capability context. Report: `task-4-report.md`. Awaiting independent review; Tasks 5+ remain unstarted.
+
+## Final acceptance audit — supersedes earlier pending-review notes
+
+- Final branch HEAD: `6ae07a11837f88da6d170d06680678ea112b2fc6` (`codex/aling-v05-design`); worktree clean before this audit note.
+- Fresh whole-branch review found four issues; all were fixed in `1029e20`, `89ba89d`, and `6ae07a1`. A new independent read-only reviewer verified the fixes with no findings; targeted search/policy/AI/meme suite → **202 passed**.
+- Fresh full-suite run at final code → **561 passed**, one existing Starlette/httpx deprecation warning. Ruff, format, lock check, and diff check passed.
+- Final source distribution and wheel build succeeded; CLI reports `ALING 0.5.0`. Base and search Compose checks passed using `.env.example`, and the final Docker image build passed. No containers/services were started.
+- No remote push, tag, deployment, real `.env`/database access, NapCat login, QQ message, or live account interaction occurred.

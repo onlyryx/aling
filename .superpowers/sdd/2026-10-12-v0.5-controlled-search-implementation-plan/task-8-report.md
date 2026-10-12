@@ -45,4 +45,13 @@
 - A subsequent security check identified percent-encoded generic credentials (`token=`, `api_key=`, `password=`). Added end-to-end tests; prior to the fix, token/password cases reached the classifier.
 - Every decode layer now runs the existing sensitive-value, forbidden-term, contact, query-operator, callback and URL checks. Decoded controls and separators are rejected too; decoding remains bounded by the 100-character query limit.
 - Focused search and policy tests passed (**141 passed**); the final affected suite passed (**202 passed**) and the full suite passed (**561 passed**). Ruff check/format and `git diff --check` passed.
-- Follow-up commit is separate and awaits another fresh independent read-only review.
+- Follow-up commits are `1029e20`, `89ba89d`, and `6ae07a1`. A fresh independent re-review of the final fix set approved it with no findings; the targeted suite passed **202 tests**.
+
+## Final acceptance audit — HEAD `6ae07a1`
+
+- Fresh full-suite run: `uv run --frozen --extra dev pytest -q` — **561 passed**, one existing Starlette/httpx deprecation warning.
+- `uv run --frozen --extra dev ruff check .`, `uv run --frozen --extra dev ruff format --check .`, `uv lock --check`, and `git diff --check HEAD` — passed.
+- Rebuilt source distribution and wheel with `uv build`; `uv run --frozen aling --version` reports `ALING 0.5.0`.
+- Both base and optional-search Compose `config --quiet` checks passed with `.env.example`.
+- Rebuilt the Docker image from final source successfully. No container or external service was started.
+- Final worktree is clean. No push, tag, deployment, QQ/NapCat login, real `.env`, or live database access occurred.
