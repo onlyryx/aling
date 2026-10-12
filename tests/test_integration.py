@@ -4,6 +4,7 @@ import logging
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.log import logger
 from PIL import Image
 from starlette.websockets import WebSocketDisconnect
@@ -11,9 +12,11 @@ from starlette.websockets import WebSocketDisconnect
 from aling.app import build_app
 from aling.core.config import Settings
 from aling.core.logging import configure_logging
+from aling.core.permissions import PermissionContext
 from aling.core.storage import DeploymentSearchPolicy, SearchSourceRule
 from aling.runtime import get_runtime
 from aling.services.ai import ChatOutcome
+from aling.services.search_budget import TaskBudget
 from aling.services.search_policy import SearchPurpose
 
 
@@ -38,8 +41,11 @@ def event(text, *, role="member", mention=False, user=12, group=34):
 
 
 class SearchClassifier:
+    def __init__(self):
+        self.calls = []
+
     async def classify(self, text, *, budget):
-        assert text == "Python docs"
+        self.calls.append(text)
         return SearchPurpose.TECHNICAL
 
 
@@ -59,7 +65,10 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
             200, json={"choices": [{"message": {"content": "hello [CQ:at,qq=all]"}}]}
         )
 
+    search_requests = []
+
     def search_backend(request):
+        search_requests.append(request)
         assert request.method == "POST"
         assert str(request.url) == "http://search:8080/search"
         return httpx.Response(
@@ -70,7 +79,15 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                         "title": "Python asyncio",
                         "url": "https://docs.python.org/3/library/asyncio.html",
                         "content": "Official documentation",
-                    }
+                    },
+                    {
+                        "title": "unapproved private result",
+                        "url": (
+                            "https://private-user:url-credential-secret@attacker.invalid/secret"
+                            "?token=query-url-secret"
+                        ),
+                        "content": "fake-body-secret",
+                    },
                 ]
             },
         )
@@ -284,6 +301,65 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                     "关闭"
                     in exchange(event(f"/feature {feature} off", role="admin"))[0]["data"]["text"]
                 )
+            classifier = SearchClassifier()
+            runtime.search_policy.classifier = classifier
+            download_calls = []
+            from aling.plugins import meme as meme_plugin
+
+            monkeypatch.setattr(meme_plugin._limiter, "cooldown", 0)
+
+            async def fake_download(*args, **kwargs):
+                download_calls.append((args, kwargs))
+                raise AssertionError("disabled online meme must not download")
+
+            runtime.online_memes.image_client.fetch = fake_download
+            assert "联网搜索当前未启用" in exchange(event("/help"))[0]["data"]["text"]
+            disabled_search_reply = exchange(event("/search disabled-query-secret"))[0]["data"][
+                "text"
+            ]
+            assert "Python asyncio" not in disabled_search_reply
+            exchange(event("/meme --mode online disabled-query-secret"))
+            assert classifier.calls == []
+            assert search_requests == []
+            assert download_calls == []
+            assert client.post("/api/admin/search-probe", json={"group_id": 34}).status_code == 409
+
+            query = "disabled-ai-tool-secret"
+            task_context = client.portal.call(
+                runtime.search_policy.create_task_from_event,
+                GroupMessageEvent.model_validate(event(query)),
+            )
+            client.portal.call(runtime.features.set_ai_tools_enabled, 12, True)
+            permission = PermissionContext(12, 34, "member")
+
+            async def call_tool(name, arguments, task_budget):
+                return await runtime.tools.call(
+                    name,
+                    arguments,
+                    permission,
+                    task_context=task_context,
+                    budget=task_budget,
+                    prompt=query,
+                )
+
+            search_tool = client.portal.call(
+                call_tool,
+                "web_search",
+                {"query_id": task_context.query_id},
+                TaskBudget.start(),
+            )
+            meme_tool = client.portal.call(
+                call_tool,
+                "meme_search",
+                {"query": query, "mode": "online"},
+                TaskBudget.start(),
+            )
+            assert search_tool["ok"] is False
+            assert meme_tool["error"] == "online_memes_not_ready"
+            assert classifier.calls == []
+            assert search_requests == []
+            assert download_calls == []
+            client.portal.call(runtime.features.set_ai_tools_enabled, 12, False)
             asyncio.run(
                 runtime.store.set_deployment_search_policy(
                     DeploymentSearchPolicy(
@@ -293,19 +369,24 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
             )
             asyncio.run(runtime.features.set_global(12, "search", True))
             asyncio.run(runtime.store.set_feature_enabled(34, "search", True))
-            runtime.search_policy.classifier = SearchClassifier()
-            search_reply = exchange(event("/search Python docs"))[0]["data"]["text"]
+            runtime.search_policy.classifier = classifier
+            query_secret = "fake-query-privacy-731"
+            search_reply = exchange(event(f"/search {query_secret}"))[0]["data"]["text"]
             assert "Python asyncio" in search_reply
             assert "https://docs.python.org/3/library/asyncio.html" in search_reply
             assert "Official documentation" in search_reply
-            assert not any("Python docs" in line for line in log_lines)
+            assert classifier.calls == [query_secret]
+            assert len(search_requests) == 1
+            assert not any(query_secret in str(line) for line in log_lines)
+            enabled_help = exchange(event("/help"))[0]["data"]["text"]
+            assert "联网搜索当前已启用" in enabled_help
+            assert "在线表情当前未启用" in enabled_help
+            assert "--mode local|auto|online" in enabled_help
             meme = exchange(event("/meme hello"))
+            assert classifier.calls == [query_secret]
             assert [segment["type"] for segment in meme] == ["text", "image"]
             assert "[CQ:at,qq=all]" in meme[0]["data"]["text"]
             assert meme[1]["data"]["file"].startswith("base64://")
-            from aling.plugins import meme as meme_plugin
-
-            monkeypatch.setattr(meme_plugin._limiter, "cooldown", 0)
             ws.send_json(event("/meme hello"))
             image_request = ws.receive_json()
             assert image_request["params"]["message"][1]["type"] == "image"
@@ -330,6 +411,7 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
             )
             assert exchange(event("/ping", mention=True))[0]["data"]["text"] == "pong"
             reply = exchange(event("my question", mention=True))
+            assert classifier.calls == [query_secret]
             assert reply == [{"type": "text", "data": {"text": "hello [CQ:at,qq=all]"}}]
             assert "暂时" in exchange(event("error please", mention=True))[0]["data"]["text"]
             assert prompts == ["my question", "error please"]
@@ -410,6 +492,10 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
     bot_logs = "".join(map(str, log_lines))
     assert "fictional private DM body" not in panel_overview.text
     assert "fictional private DM body" not in bot_logs
+    assert "url-credential-secret" not in bot_logs
+    assert "query-url-secret" not in bot_logs
+    assert "fake-body-secret" not in bot_logs
+    assert str(meme_dir / "hello.png") not in bot_logs
 
 
 def test_logging_omits_framework_message_content_and_exception_locals():
