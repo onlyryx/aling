@@ -132,6 +132,20 @@ async def test_admission_enforces_cross_group_user_cooldown_and_hourly_quotas():
         pass
 
 
+async def test_admission_respects_cooldown_longer_than_instance_default():
+    now = [1000.0]
+    admission = SearchAdmission(clock=lambda: now[0])
+    limits = SearchQuotaLimits(user_cooldown_seconds=60)
+
+    async with admission.slot(group_id=20, user_id=7, limits=limits):
+        pass
+
+    now[0] += 16
+    with pytest.raises(BudgetExceeded, match="cooldown"):
+        async with admission.slot(group_id=21, user_id=7, limits=limits):
+            pytest.fail("the policy cooldown must outlive the instance default")
+
+
 def test_default_search_quota_limits_match_the_approved_plan():
     assert SearchQuotaLimits() == SearchQuotaLimits(
         user_cooldown_seconds=15,

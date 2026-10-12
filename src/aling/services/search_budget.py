@@ -166,7 +166,7 @@ class SearchAdmission:
         self._users: dict[int, deque[float]] = {}
         self._groups: dict[int, deque[float]] = {}
         self._instance: deque[float] = deque()
-        self._last_user: dict[int, float] = {}
+        self._last_user: dict[int, tuple[float, float]] = {}
         self._active_groups: dict[int, int] = defaultdict(int)
         self._active = 0
         self._lock = asyncio.Lock()
@@ -175,15 +175,15 @@ class SearchAdmission:
         while bucket and now - bucket[0] >= 3600:
             bucket.popleft()
 
-    def _prune_state(self, now: float) -> None:
+    def _prune_state(self, now: float, user_cooldown_seconds: float) -> None:
         self._prune(self._instance, now)
         for buckets in (self._users, self._groups):
             for identity, bucket in list(buckets.items()):
                 self._prune(bucket, now)
                 if not bucket:
                     buckets.pop(identity, None)
-        for user_id, last in list(self._last_user.items()):
-            if now - last >= self.limits.user_cooldown_seconds:
+        for user_id, (last, stored_cooldown) in list(self._last_user.items()):
+            if now - last >= max(stored_cooldown, user_cooldown_seconds):
                 self._last_user.pop(user_id, None)
 
     @asynccontextmanager
@@ -199,11 +199,11 @@ class SearchAdmission:
         now = self.clock()
         quota = limits or self.limits
         async with self._lock:
-            self._prune_state(now)
+            self._prune_state(now, quota.user_cooldown_seconds)
             user = self._users.get(user_id, deque())
             group = self._groups.get(group_id, deque())
             last = self._last_user.get(user_id)
-            if last is not None and now - last < quota.user_cooldown_seconds:
+            if last is not None and now - last[0] < max(last[1], quota.user_cooldown_seconds):
                 raise AdmissionRejected("User cooldown active")
             if len(user) >= quota.user_hourly:
                 raise AdmissionRejected("User hourly quota reached")
@@ -220,7 +220,7 @@ class SearchAdmission:
             self._users[user_id] = user
             self._groups[group_id] = group
             self._instance.append(now)
-            self._last_user[user_id] = now
+            self._last_user[user_id] = (now, quota.user_cooldown_seconds)
             self._active += 1
             self._active_groups[group_id] += 1
         try:
