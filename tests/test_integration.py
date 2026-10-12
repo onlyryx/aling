@@ -11,8 +11,10 @@ from starlette.websockets import WebSocketDisconnect
 from aling.app import build_app
 from aling.core.config import Settings
 from aling.core.logging import configure_logging
+from aling.core.storage import DeploymentSearchPolicy, SearchSourceRule
 from aling.runtime import get_runtime
 from aling.services.ai import ChatOutcome
+from aling.services.search_policy import SearchPurpose
 
 
 def event(text, *, role="member", mention=False, user=12, group=34):
@@ -35,6 +37,12 @@ def event(text, *, role="member", mention=False, user=12, group=34):
     }
 
 
+class SearchClassifier:
+    async def classify(self, text, *, budget):
+        assert text == "Python docs"
+        return SearchPurpose.TECHNICAL
+
+
 def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_path, monkeypatch):
     monkeypatch.setenv("ALING_EXAMPLE_ENABLED", "true")
     prompts = []
@@ -49,6 +57,22 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
             return httpx.Response(500, text="sensitive provider response")
         return httpx.Response(
             200, json={"choices": [{"message": {"content": "hello [CQ:at,qq=all]"}}]}
+        )
+
+    def search_backend(request):
+        assert request.method == "POST"
+        assert str(request.url) == "http://search:8080/search"
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "title": "Python asyncio",
+                        "url": "https://docs.python.org/3/library/asyncio.html",
+                        "content": "Official documentation",
+                    }
+                ]
+            },
         )
 
     meme_dir = tmp_path / "memes"
@@ -82,7 +106,11 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
         extra_plugins=["docs.plugins.example_plugin"],
         meme_dir=meme_dir,
     )
-    app = build_app(config, ai_transport=httpx.MockTransport(model))
+    app = build_app(
+        config,
+        ai_transport=httpx.MockTransport(model),
+        search_transport=httpx.MockTransport(search_backend),
+    )
     log_lines = []
     configure_logging("DEBUG", sink=log_lines.append)
     with TestClient(app, base_url=config.webui_origin) as client:
@@ -256,6 +284,21 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
                     "关闭"
                     in exchange(event(f"/feature {feature} off", role="admin"))[0]["data"]["text"]
                 )
+            asyncio.run(
+                runtime.store.set_deployment_search_policy(
+                    DeploymentSearchPolicy(
+                        sources=(SearchSourceRule("python", "technical", "docs.python.org", "/3"),)
+                    )
+                )
+            )
+            asyncio.run(runtime.features.set_global(12, "search", True))
+            asyncio.run(runtime.store.set_feature_enabled(34, "search", True))
+            runtime.search_policy.classifier = SearchClassifier()
+            search_reply = exchange(event("/search Python docs"))[0]["data"]["text"]
+            assert "Python asyncio" in search_reply
+            assert "https://docs.python.org/3/library/asyncio.html" in search_reply
+            assert "Official documentation" in search_reply
+            assert not any("Python docs" in line for line in log_lines)
             meme = exchange(event("/meme hello"))
             assert [segment["type"] for segment in meme] == ["text", "image"]
             assert "[CQ:at,qq=all]" in meme[0]["data"]["text"]

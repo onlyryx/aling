@@ -336,9 +336,15 @@ class SearchPolicyService:
         return record.classification
 
     async def _classify(
-        self, record: _TaskRecord, query: str, budget: Any, operation: str | None = None
+        self,
+        record: _TaskRecord,
+        query: str,
+        budget: Any,
+        operation: str | None = None,
+        classifier: IntentClassifier | None = None,
     ) -> None:
-        if self.classifier is None:
+        classifier = classifier or self.classifier
+        if classifier is None:
             record.classification_attempted = True
             raise SearchPolicyDenied("Intent classification is unavailable")
         if not record.lock:
@@ -359,20 +365,28 @@ class SearchPolicyService:
             deployment, group = await self._gate(context, operation)
             record.classification_attempted = True
             try:
-                async with asyncio.timeout(
-                    min(
-                        _QUERY_TIMEOUT,
-                        deployment.limits.request_timeout_seconds,
-                        group.limits.request_timeout_seconds
-                        if group.limits is not None
-                        else deployment.limits.request_timeout_seconds,
-                        max(0, record.expires_at - self.clock()),
-                    )
-                ):
-                    purpose = await self.classifier.classify(query, budget=budget)
+                request_timeout = min(
+                    _QUERY_TIMEOUT,
+                    deployment.limits.request_timeout_seconds,
+                    group.limits.request_timeout_seconds
+                    if group.limits is not None
+                    else deployment.limits.request_timeout_seconds,
+                    max(0, record.expires_at - self.clock()),
+                )
+                budget_remaining = getattr(budget, "remaining_work_seconds", None)
+                if callable(budget_remaining):
+                    request_timeout = min(request_timeout, budget_remaining())
+                if request_timeout <= 0:
+                    record.classification = None
+                    raise SearchPolicyDenied("Task work budget is exhausted")
+                async with asyncio.timeout(request_timeout):
+                    purpose = await classifier.classify(query, budget=budget)
             except TimeoutError:
                 record.classification = None
                 raise SearchPolicyDenied("Intent classification failed or timed out") from None
+            except SearchPolicyDenied:
+                record.classification = None
+                raise
             except asyncio.CancelledError:
                 record.classification = None
                 raise
@@ -419,7 +433,13 @@ class SearchPolicyService:
         return context
 
     async def authorize_online(
-        self, context: SearchTaskContext, text: str, operation: str, *, budget: Any = None
+        self,
+        context: SearchTaskContext,
+        text: str,
+        operation: str,
+        *,
+        budget: Any = None,
+        classifier: IntentClassifier | None = None,
     ) -> SearchTaskContext:
         if operation not in {"search", "online_meme"}:
             raise SearchPolicyDenied("Only a search operation can create online authorization")
@@ -440,7 +460,7 @@ class SearchPolicyService:
             if record.classification_attempted and record.classification is None:
                 raise SearchPolicyDenied("Search classification was already denied")
         if not record.classification_attempted:
-            await self._classify(record, query, budget, operation)
+            await self._classify(record, query, budget, operation, classifier)
         if record.classification is None:
             raise SearchPolicyDenied("Intent classification was denied")
         deployment, group = await self._gate(record.context, operation)

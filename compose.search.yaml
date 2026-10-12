@@ -1,0 +1,31 @@
+services:
+  search:
+    profiles: [search]
+    image: searxng/searxng:2026.9.18-0d6910ae5
+    restart: unless-stopped
+    environment:
+      SEARXNG_SETTINGS_PATH: /etc/searxng/settings.yml
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set SEARXNG_SECRET to a locally generated random value}
+      FORCE_OWNERSHIP: "false"
+      GRANIAN_LOG_ACCESS_ENABLED: "false"
+    volumes:
+      - ./deploy/searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - search-cache:/var/cache/searxng
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).close()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  search-cache:

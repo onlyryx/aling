@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -14,6 +17,10 @@ from aling.services.sessions import SessionStore
 from aling.services.status import ConnectionStatus
 from aling.services.tools import ToolRegistry
 from aling.services.web import SafeWebClient, WebReadService
+
+if TYPE_CHECKING:
+    from aling.services.search import SearchService, SearxngClient
+    from aling.services.search_policy import SearchPolicyService
 
 
 @dataclass
@@ -31,12 +38,21 @@ class Runtime:
     status: ConnectionStatus = field(default_factory=ConnectionStatus)
     sessions: SessionStore = field(default_factory=SessionStore)
     tools: ToolRegistry | None = None
+    search_policy: SearchPolicyService | None = None
+    search_client: SearxngClient | None = None
+    search: SearchService | None = None
     _session_expiry_task: asyncio.Task | None = field(default=None, repr=False)
 
     @classmethod
     def create(
-        cls, settings: Settings, ai_transport: httpx.AsyncBaseTransport | None = None
-    ) -> "Runtime":
+        cls,
+        settings: Settings,
+        ai_transport: httpx.AsyncBaseTransport | None = None,
+        search_transport: httpx.AsyncBaseTransport | None = None,
+    ) -> Runtime:
+        from aling.services.search import SearchService, SearxngClient
+        from aling.services.search_policy import SearchPolicyService
+
         store = GroupSettingsStore(settings.database_path, superusers=settings.superusers)
         ai = OpenAIClient(settings, transport=ai_transport)
         web = SafeWebClient(timeout=settings.web_timeout, max_bytes=settings.web_max_bytes)
@@ -52,6 +68,9 @@ class Runtime:
         )
         features = FeatureService(settings, store, sessions=sessions)
         proactive = ProactiveSender(settings, store)
+        search_policy = SearchPolicyService(features)
+        search_client = SearxngClient(settings, transport=search_transport)
+        search = SearchService(search_policy, search_client)
         return cls(
             settings,
             store,
@@ -66,6 +85,9 @@ class Runtime:
             status,
             sessions,
             ToolRegistry(features, web_read, memes, timeout=settings.ai_tool_timeout),
+            search_policy,
+            search_client,
+            search,
         )
 
     async def startup(self) -> None:
@@ -91,6 +113,8 @@ class Runtime:
         await self.sessions.clear()
         await self.ai.aclose()
         await self.web.aclose()
+        if self.search_client is not None:
+            await self.search_client.aclose()
 
 
 _runtime: Runtime | None = None

@@ -16,7 +16,10 @@ from aling.services.proactive import send_group_text
 
 
 def build_app(
-    settings: Settings, *, ai_transport: httpx.AsyncBaseTransport | None = None
+    settings: Settings,
+    *,
+    ai_transport: httpx.AsyncBaseTransport | None = None,
+    search_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     configure_logging(settings.log_level)
     # Parse deployment settings once. Force passive reverse WS, never outgoing account URLs.
@@ -38,7 +41,7 @@ def build_app(
     )
     driver = nonebot.get_driver()
     driver.register_adapter(Adapter)
-    runtime = Runtime.create(settings, ai_transport)
+    runtime = Runtime.create(settings, ai_transport, search_transport)
     set_runtime(runtime)
 
     @driver.on_bot_connect
@@ -77,6 +80,7 @@ def build_app(
     for plugin in [
         "aling.plugins.commands",
         "aling.plugins.ai_chat",
+        "aling.plugins.search",
         "aling.plugins.web_read",
         "aling.plugins.meme",
         "aling.plugins.group_moderation",

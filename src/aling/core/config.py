@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     meme_dir: Path = Path("data/memes")
     web_timeout: float = Field(default=10, gt=0, le=60)
     web_max_bytes: int = Field(default=1_000_000, ge=1, le=5_000_000)
+    search_origin: str = "http://search:8080"
+    search_timeout_seconds: float = Field(default=10, gt=0, le=10)
+    search_max_bytes: int = Field(default=1_000_000, ge=1024, le=5_000_000)
+    search_max_connections: int = Field(default=2, ge=1, le=4)
 
     @field_validator("proactive_timezone")
     @classmethod
@@ -143,6 +147,28 @@ class Settings(BaseSettings):
         ):
             raise ValueError("Expected an HTTP(S) API base URL without credentials/query/fragment")
         return value.rstrip("/")
+
+    @field_validator("search_origin")
+    @classmethod
+    def valid_search_origin(cls, value: str) -> str:
+        parts = urlsplit(value)
+        try:
+            port = parts.port
+        except ValueError:
+            raise ValueError("Search origin must be a valid HTTP(S) origin") from None
+        if (
+            parts.scheme not in {"http", "https"}
+            or not parts.hostname
+            or parts.username is not None
+            or parts.password is not None
+            or parts.path
+            or parts.query
+            or parts.fragment
+            or (port is not None and port == 0)
+            or value != f"{parts.scheme}://{parts.netloc}"
+        ):
+            raise ValueError("Search origin must be an exact HTTP(S) origin without credentials")
+        return value
 
     @property
     def ai_configured(self) -> bool:

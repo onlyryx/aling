@@ -1,0 +1,27 @@
+use_default_settings:
+  engines:
+    keep_only:
+      - duckduckgo
+      - wikipedia
+      - duckduckgo images
+
+general:
+  debug: false
+  instance_name: "ALING private search"
+  enable_metrics: false
+
+search:
+  safe_search: 2
+  autocomplete: ""
+  formats:
+    - json
+
+server:
+  secret_key: "$SEARXNG_SECRET"
+  bind_address: "0.0.0.0"
+  method: POST
+  limiter: false
+  image_proxy: false
+
+ui:
+  query_in_title: false
