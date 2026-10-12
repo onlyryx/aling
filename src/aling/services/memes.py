@@ -33,6 +33,24 @@ class MemeQuotaError(MemeCatalogError):
     pass
 
 
+def parse_meme_command(value: str) -> tuple[str, str]:
+    """Parse the optional deterministic mode prefix; omitted mode stays local."""
+    if not isinstance(value, str):
+        raise MemeCatalogError("Invalid meme command")
+    text = value.strip()
+    mode = "local"
+    if text.startswith("--mode"):
+        head, separator, remainder = text.partition(" ")
+        if not separator or head != "--mode":
+            raise MemeCatalogError("Invalid meme mode syntax")
+        selected, separator, text = remainder.strip().partition(" ")
+        if not separator or selected not in {"local", "auto", "online"}:
+            raise MemeCatalogError("Invalid meme mode")
+        mode = selected
+        text = text.strip()
+    return mode, text
+
+
 @dataclass(frozen=True)
 class ValidatedImage:
     content: bytes

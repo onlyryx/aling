@@ -11,8 +11,10 @@ from aling.core.storage import GroupSettingsStore
 from aling.services.ai import ChatService, ModelRequestScheduler, OpenAIClient
 from aling.services.features import FeatureService
 from aling.services.memes import LocalMemeProvider
+from aling.services.online_memes import MemeImageClient, OnlineMemeService
 from aling.services.proactive import ProactiveSender
 from aling.services.scheduler import ProactiveScheduler
+from aling.services.search_budget import SearchAdmission
 from aling.services.sessions import SessionStore
 from aling.services.status import ConnectionStatus
 from aling.services.tools import ToolRegistry
@@ -32,6 +34,7 @@ class Runtime:
     web: SafeWebClient
     web_read: WebReadService
     memes: LocalMemeProvider
+    online_memes: OnlineMemeService
     proactive: ProactiveSender
     scheduler: ProactiveScheduler
     features: FeatureService
@@ -76,7 +79,15 @@ class Runtime:
         proactive = ProactiveSender(settings, store)
         search_policy = SearchPolicyService(features, classifier=model_requests)
         search_client = SearxngClient(settings, transport=search_transport)
-        search = SearchService(search_policy, search_client)
+        admission = SearchAdmission()
+        search = SearchService(search_policy, search_client, admission=admission)
+        online_memes = OnlineMemeService(
+            memes,
+            search_policy,
+            search_client,
+            MemeImageClient(timeout=settings.web_timeout),
+            admission=admission,
+        )
         return cls(
             settings,
             store,
@@ -85,6 +96,7 @@ class Runtime:
             web,
             web_read,
             memes,
+            online_memes,
             proactive,
             ProactiveScheduler(settings, store, proactive),
             features,
@@ -97,6 +109,7 @@ class Runtime:
                 timeout=settings.ai_tool_timeout,
                 search=search,
                 search_policy=search_policy,
+                online_memes=online_memes,
             ),
             search_policy,
             search_client,
@@ -114,6 +127,7 @@ class Runtime:
         while True:
             await asyncio.sleep(60)
             await self.sessions.expire()
+            await self.online_memes.expire()
 
     async def shutdown(self) -> None:
         await self.scheduler.stop()
@@ -125,6 +139,7 @@ class Runtime:
                 pass
             self._session_expiry_task = None
         await self.sessions.clear()
+        await self.online_memes.aclose()
         await self.ai.aclose()
         await self.web.aclose()
         if self.search_client is not None:

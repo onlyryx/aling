@@ -91,7 +91,17 @@ async def chat_handler(event: GroupMessageEvent) -> None:
         and await runtime.features.enabled(event.group_id, "meme")
     ):
         try:
-            image = runtime.memes.read_image(outcome.meme_resource_id)
+            if await runtime.online_memes.store.contains(outcome.meme_resource_id):
+                if task_context is None:
+                    raise PermissionError("Online meme task context is unavailable")
+                image = await runtime.online_memes.read_for_send(
+                    outcome.meme_resource_id,
+                    event.group_id,
+                    event.user_id,
+                    task_id=task_context.task_id,
+                )
+            else:
+                image = runtime.memes.read_image(outcome.meme_resource_id)
             message.append(
                 MessageSegment.image("base64://" + base64.b64encode(image.content).decode("ascii"))
             )

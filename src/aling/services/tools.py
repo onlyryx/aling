@@ -3,6 +3,7 @@ import asyncio
 from aling.core.permissions import PermissionContext
 from aling.services.features import FeatureService
 from aling.services.memes import LocalMemeProvider, MemeCatalogError
+from aling.services.online_memes import TemporaryMemeRef
 from aling.services.web import WebReadService
 
 
@@ -43,7 +44,9 @@ class ToolRegistry:
             "type": "function",
             "function": {
                 "name": "meme_search",
-                "description": "按 local、auto 或 online 模式搜索表情包；当前 online 尚未就绪。",
+                "description": (
+                    "按 local、auto 或 online 模式查找表情包；online 只返回获准来源的静态图片。"
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -66,9 +69,11 @@ class ToolRegistry:
         timeout: float = 10,
         search=None,
         search_policy=None,
+        online_memes=None,
     ) -> None:
         self.features, self.web_read, self.memes, self.timeout = features, web_read, memes, timeout
         self.search, self.search_policy = search, search_policy
+        self.online_memes = online_memes
 
     async def definitions_for(self, group_id: int) -> list[dict]:
         if not await self.features.ai_tools_enabled():
@@ -161,8 +166,46 @@ class ToolRegistry:
             mode = arguments.get("mode", "local")
             if not isinstance(mode, str) or mode not in {"local", "auto", "online"}:
                 return {"ok": False, "error": "参数无效。"}
-            if mode == "online":
-                return {"ok": False, "error": "online_memes_not_ready"}
+            if mode in {"auto", "online"}:
+                if mode == "auto":
+                    try:
+                        async with asyncio.timeout(self.timeout):
+                            matches = await self.memes.search(arguments["query"], limit=1)
+                        if matches:
+                            return {
+                                "ok": True,
+                                "mode": "local",
+                                "resource_id": matches[0].resource_id,
+                                "description": matches[0].description,
+                            }
+                    except (MemeCatalogError, TimeoutError) as exc:
+                        return {"ok": False, "error": _safe_error(exc)}
+                if (
+                    self.online_memes is None
+                    or task_context is None
+                    or budget is None
+                    or not await self.features.enabled(context.group_id, "online_meme")
+                ):
+                    return {"ok": False, "error": "online_memes_not_ready"}
+                # Freeze online lookup to the exact current user request; the model
+                # cannot silently broaden it by inventing a separate query.
+                query = prompt.strip()
+                if not query or len(query) > 100:
+                    return {"ok": False, "error": "query_not_authorized"}
+                try:
+                    result = await self.online_memes.search_and_download(
+                        task_context, query, "online", budget
+                    )
+                    if not isinstance(result, TemporaryMemeRef):
+                        return {"ok": False, "error": "online_memes_not_ready"}
+                    return {
+                        "ok": True,
+                        "mode": "online",
+                        "resource_id": result.opaque_id,
+                        "description": result.description,
+                    }
+                except Exception as exc:
+                    return {"ok": False, "error": _safe_error(exc)}
             try:
                 async with asyncio.timeout(self.timeout):
                     matches = await self.memes.search(arguments["query"], limit=1)

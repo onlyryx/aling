@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from aling.services.memes import LocalMemeProvider, MemeCatalogError
+from aling.services.memes import LocalMemeProvider, MemeCatalogError, parse_meme_command
 
 
 def write_catalog(root, entries):
@@ -15,6 +15,25 @@ def write_catalog(root, entries):
 
 def image(path, *, size=(3, 3), format="PNG"):
     Image.new("RGB", size, "red").save(path, format)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("猫猫", ("local", "猫猫")),
+        ("--mode local 猫猫", ("local", "猫猫")),
+        ("--mode auto 猫猫", ("auto", "猫猫")),
+        ("--mode online 猫猫", ("online", "猫猫")),
+    ],
+)
+def test_meme_command_keeps_omitted_mode_local(value, expected):
+    assert parse_meme_command(value) == expected
+
+
+@pytest.mark.parametrize("value", ["--mode online", "--mode=online cat", "--mode unsafe cat"])
+def test_meme_command_rejects_invalid_mode_syntax(value):
+    with pytest.raises(MemeCatalogError):
+        parse_meme_command(value)
 
 
 async def test_local_meme_search_matches_tags_and_returns_one(tmp_path):

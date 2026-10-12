@@ -45,6 +45,7 @@ class SearchHit:
     title: str
     url: str
     content: str
+    image_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -175,6 +176,7 @@ class SearxngClient:
                 raise SearchError("upstream_failed")
             title, url = item.get("title"), item.get("url")
             content = item.get("content", "")
+            image_url = item.get("img_src") if category == "images" else None
             if (
                 not isinstance(title, str)
                 or not title.strip()
@@ -184,9 +186,20 @@ class SearxngClient:
                 or len(url) > 2048
                 or not isinstance(content, str)
                 or len(content) > 10000
+                or (
+                    image_url is not None
+                    and (not isinstance(image_url, str) or len(image_url) > 2048)
+                )
             ):
                 raise SearchError("upstream_failed")
-            hits.append(SearchHit(_clean_text(title, 300), url, _clean_text(content, 600)))
+            hits.append(
+                SearchHit(
+                    _clean_text(title, 300),
+                    url,
+                    _clean_text(content, 600),
+                    image_url=image_url,
+                )
+            )
         return hits
 
     async def aclose(self) -> None:

@@ -72,6 +72,45 @@ async def test_search_posts_query_to_fixed_origin_without_url_leakage():
     ]
 
 
+async def test_image_search_preserves_result_page_and_explicit_image_url():
+    async def handle(_request):
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "title": "approved result",
+                        "url": "https://gallery.example/post/1",
+                        "img_src": "https://cdn.example/image/1.png",
+                        "content": "static image",
+                    },
+                    {
+                        "title": "no direct image",
+                        "url": "https://gallery.example/post/2",
+                        "content": "page only",
+                    },
+                ]
+            },
+        )
+
+    client = SearxngClient(
+        Settings(_env_file=None, onebot_access_token="test"),
+        transport=httpx.MockTransport(handle),
+    )
+    hits = await client.search(
+        "cat meme",
+        category="images",
+        language="auto",
+        safe_search=2,
+        limit=3,
+        budget=budget(),
+    )
+    assert hits[0].url == "https://gallery.example/post/1"
+    assert hits[0].image_url == "https://cdn.example/image/1.png"
+    assert hits[1].url == "https://gallery.example/post/2"
+    assert hits[1].image_url is None
+
+
 @pytest.mark.parametrize(
     "status,body,code",
     [

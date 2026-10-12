@@ -8,6 +8,7 @@ from aling.core.permissions import PermissionContext
 from aling.core.storage import GroupSettingsStore
 from aling.services.ai import ChatOutcome, ChatService, ModelRequestScheduler
 from aling.services.features import FeatureService
+from aling.services.online_memes import TemporaryMemeRef
 from aling.services.search_budget import TaskBudget
 from aling.services.tools import ToolRegistry
 
@@ -680,3 +681,79 @@ async def test_malformed_tool_followup_is_a_safe_failure():
         34, 12, "test", Registry()
     )
     assert "暂时不可用" in result.text
+
+
+async def test_online_meme_tool_uses_exact_user_prompt_and_returns_opaque_resource(tmp_path):
+    settings = Settings(
+        _env_file=None,
+        onebot_access_token="test",
+        ai_api_key="fake",
+        ai_model="test",
+        allowed_groups={34},
+        superusers={12},
+    )
+    store = GroupSettingsStore(tmp_path / "settings.db", superusers={12})
+    await store.initialize()
+    await store.set_search_consent(12, True)
+    features = FeatureService(settings, store)
+    await features.initialize()
+    for feature in ("ai", "meme", "online_meme"):
+        await features.set_global(12, feature, True)
+        await store.set_feature_enabled(34, feature, True)
+    await features.set_ai_tools_enabled(12, True)
+
+    class OnlineMemes:
+        def __init__(self):
+            self.calls = []
+
+        async def search_and_download(self, context, query, mode, budget):
+            self.calls.append((context, query, mode, budget))
+            return TemporaryMemeRef("o" * 22, "在线猫猫", "media")
+
+    online = OnlineMemes()
+
+    class LocalMemes:
+        async def search(self, query, *, limit=1):
+            if query == "猫猫":
+                return [SimpleNamespace(resource_id="local-cat", description="本地猫猫")]
+            return []
+
+    registry = ToolRegistry(
+        features,
+        object(),
+        LocalMemes(),
+        search_policy=object(),
+        online_memes=online,
+    )
+    context = PermissionContext(12, 34, "member")
+    task_context = SimpleNamespace(query_id="q", task_id="task")
+    budget = TaskBudget.start()
+    prompt = "联网找一张猫猫表情"
+
+    result = await registry.call(
+        "meme_search",
+        {"query": "模型臆造的其他关键词", "mode": "online"},
+        context,
+        task_context=task_context,
+        budget=budget,
+        prompt=prompt,
+    )
+
+    assert result == {
+        "ok": True,
+        "mode": "online",
+        "resource_id": "o" * 22,
+        "description": "在线猫猫",
+    }
+    assert online.calls == [(task_context, prompt, "online", budget)]
+    local_hit = await registry.call(
+        "meme_search",
+        {"query": "猫猫", "mode": "auto"},
+        context,
+        task_context=task_context,
+        budget=budget,
+        prompt=prompt,
+    )
+    assert local_hit["resource_id"] == "local-cat"
+    assert local_hit["mode"] == "local"
+    assert len(online.calls) == 1
