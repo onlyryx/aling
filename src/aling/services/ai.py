@@ -320,10 +320,9 @@ class ChatService:
                         )
                     except httpx.HTTPStatusError as exc:
                         if round_number == 1 and not protocol_messages:
+                            self._record_failure("tool_request_failed", exc)
                             return ChatOutcome(
-                                await self.model_requests.chat(
-                                    prompt, history, budget=budget, capability=capability
-                                )
+                                "当前模型服务暂不支持工具调用或工具请求失败；本次未执行联网操作。"
                             )
                         raise exc
                     if not isinstance(message, dict):

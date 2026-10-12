@@ -12,7 +12,7 @@ from aling.core.storage import DeploymentSearchPolicy, GroupSettingsStore, Searc
 from aling.services.features import FeatureService
 from aling.services.search import SearchError, SearchHit, SearchService, SearxngClient
 from aling.services.search_budget import TaskBudget, TaskBudgetLimits
-from aling.services.search_policy import SearchPolicyService, SearchPurpose
+from aling.services.search_policy import SearchPolicyDenied, SearchPolicyService, SearchPurpose
 
 
 def budget():
@@ -203,7 +203,11 @@ def test_search_origin_must_be_a_credential_free_http_origin(settings):
 
 
 class FakeClassifier:
+    def __init__(self):
+        self.calls = []
+
     async def classify(self, text, *, budget):
+        self.calls.append(text)
         assert text == "Python docs"
         return SearchPurpose.TECHNICAL
 
@@ -316,12 +320,51 @@ async def test_missing_classifier_fails_closed_before_sending_query(tmp_path):
     assert client.calls == []
 
 
-async def test_search_rejects_group_disallowed_by_deployment(tmp_path):
+async def test_embedded_oauth_callback_url_never_reaches_classifier_or_search(tmp_path):
+    _, _, _, policy, client, service, event = await _search_fixture(tmp_path)
+    query = "debug this callback https://login.example/cb?code=abc123&state=xyz"
+    event.message = Message("/search " + query)
+    event.raw_message = "/search " + query
+    context = await policy.create_task_from_event(event)
+
+    with pytest.raises(SearchError):
+        await service.search(context, query, policy.classifier, budget())
+
+    assert policy.classifier.calls == []
+    assert client.calls == []
+
+
+async def test_oversized_search_request_creates_no_task_or_external_call(tmp_path):
+    _, _, _, policy, client, service, event = await _search_fixture(tmp_path)
+    query = "x" * 101
+    event = GroupMessageEvent(
+        time=0,
+        self_id=event.self_id,
+        post_type="message",
+        message_type="group",
+        sub_type="normal",
+        message_id=event.message_id,
+        user_id=event.user_id,
+        group_id=event.group_id,
+        message=Message("/search " + query),
+        raw_message="/search " + query,
+        font=0,
+        sender={"user_id": event.user_id, "role": "member"},
+    )
+
+    with pytest.raises(SearchPolicyDenied):
+        await policy.create_task_from_event(event)
+
+    assert policy._tasks == {}
+    assert policy.classifier.calls == []
+    assert client.calls == []
+
+
+async def test_event_mutation_after_task_creation_does_not_change_bound_principal(tmp_path):
     _, _, _, policy, client, service, event = await _search_fixture(tmp_path)
     context = await policy.create_task_from_event(event)
     event.group_id = 35
 
-    with pytest.raises(SearchError):
-        await service.search(context, "Python docs", policy.classifier, budget())
-
-    assert client.calls == []
+    results = await service.search(context, "Python docs", policy.classifier, budget())
+    assert results.results
+    assert len(client.calls) == 1

@@ -9,7 +9,7 @@ from nonebot.plugin import PluginMetadata
 from aling.core.logging import log
 from aling.core.rate_limit import RateLimiter
 from aling.runtime import get_runtime
-from aling.services.memes import MemeCatalogError, parse_meme_command
+from aling.services.memes import MemeCatalogError, parse_group_meme_command
 from aling.services.online_memes import TemporaryMemeRef
 from aling.services.search_budget import TaskBudget, deliver_with_budget
 
@@ -35,12 +35,17 @@ meme_command = on_command("meme", rule=enabled_group, priority=5, block=True)
 
 @meme_command.handle()
 async def meme_handler(event: GroupMessageEvent, args: Annotated[Message, CommandArg()]) -> None:
+    runtime = get_runtime()
+    raw_args = args.extract_plain_text().strip()
     try:
-        mode, query = parse_meme_command(args.extract_plain_text())
+        mode, query = await parse_group_meme_command(runtime.store, event.group_id, raw_args)
     except MemeCatalogError:
         await meme_command.finish(
             MessageSegment.text("用法：/meme [--mode local|auto|online] <关键词>")
         )
+    except Exception as exc:
+        log.warning("Meme mode lookup failed ({})", type(exc).__name__)
+        await meme_command.finish(MessageSegment.text("本群表情包模式暂不可用，请稍后再试。"))
     if not query:
         await meme_command.finish(
             MessageSegment.text("用法：/meme [--mode local|auto|online] <关键词>")
@@ -49,7 +54,6 @@ async def meme_handler(event: GroupMessageEvent, args: Annotated[Message, Comman
         await meme_command.finish(MessageSegment.text("关键词太长，请控制在 100 字以内。"))
     if not _limiter.allow(event.group_id):
         await meme_command.finish(MessageSegment.text("表情包搜索太频繁了，稍等一会儿再试。"))
-    runtime = get_runtime()
     budget = TaskBudget.start() if mode != "local" else None
     task_context = None
     if mode != "local" and runtime.search_policy is not None:

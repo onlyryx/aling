@@ -1,11 +1,17 @@
 import json
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
 
-from aling.services.memes import LocalMemeProvider, MemeCatalogError, parse_meme_command
+from aling.services.memes import (
+    LocalMemeProvider,
+    MemeCatalogError,
+    parse_group_meme_command,
+    parse_meme_command,
+)
 
 
 def write_catalog(root, entries):
@@ -28,6 +34,38 @@ def image(path, *, size=(3, 3), format="PNG"):
 )
 def test_meme_command_keeps_omitted_mode_local(value, expected):
     assert parse_meme_command(value) == expected
+
+
+@pytest.mark.parametrize("default_mode", ["auto", "online"])
+def test_meme_command_uses_configured_mode_only_when_mode_is_omitted(default_mode):
+    assert parse_meme_command("猫猫", default_mode=default_mode) == (default_mode, "猫猫")
+    assert parse_meme_command("--mode local 猫猫", default_mode=default_mode) == (
+        "local",
+        "猫猫",
+    )
+
+
+@pytest.mark.parametrize("default_mode", ["auto", "online"])
+async def test_group_meme_command_reads_configured_default_and_honors_override(default_mode):
+    class Store:
+        calls = 0
+
+        async def get_group_search_policy(self, group_id):
+            assert group_id == 34
+            self.calls += 1
+            return SimpleNamespace(meme_mode=default_mode)
+
+    store = Store()
+    assert await parse_group_meme_command(store, 34, "猫猫") == (default_mode, "猫猫")
+    assert await parse_group_meme_command(store, 34, "--mode local 猫猫") == (
+        "local",
+        "猫猫",
+    )
+    assert store.calls == 1
+    assert parse_meme_command("--mode auto 猫猫", default_mode=default_mode) == (
+        "auto",
+        "猫猫",
+    )
 
 
 @pytest.mark.parametrize("value", ["--mode online", "--mode=online cat", "--mode unsafe cat"])

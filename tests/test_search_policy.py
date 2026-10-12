@@ -205,6 +205,10 @@ async def test_closed_uncertain_malformed_or_failed_classification_is_terminal(g
         "Authorization: Bearer abcd",
         "QQ号123456",
         "https://example.org/login?token=secret",
+        "debug this callback https://login.example/cb?code=abc123&state=xyz",
+        "debug encoded callback https%3A%2F%2Flogin.example%2Fcb%3Fcode%3Dabc123%26state%3Dxyz",
+        "OAuth redirect https://login.example/callback?state=private123&code=private456",
+        "OAuth callback code=private123 state=private456",
         "password:secret",
         "user@example.org 联系方式",
         "site:example.org Python",
@@ -222,9 +226,13 @@ async def test_closed_uncertain_malformed_or_failed_classification_is_terminal(g
     ],
 )
 async def test_unsafe_preflight_rejects_before_external_classifier(gate, text):
-    ctx = await gate.service.create_task_from_event(event(text=text))
-    with pytest.raises(SearchPolicyDenied):
-        await gate.service.authorize_online(ctx, text, "search")
+    if not text or len(text) > 100 or "\x00" in text or "\n" in text:
+        with pytest.raises(SearchPolicyDenied):
+            await gate.service.create_task_from_event(event(text=text))
+    else:
+        ctx = await gate.service.create_task_from_event(event(text=text))
+        with pytest.raises(SearchPolicyDenied):
+            await gate.service.authorize_online(ctx, text, "search")
     assert gate.classifier.calls == []
 
 
@@ -232,6 +240,25 @@ async def test_normal_technical_symbols_and_single_line_normalization(gate):
     ctx = await gate.service.create_task_from_event(event(text="  C++  operator !  文档  "))
     await gate.service.preflight(ctx, "  C++  operator !  文档  ", "search")
     assert gate.classifier.calls == []
+
+
+async def test_oversized_event_is_rejected_before_task_creation(gate):
+    oversized = event(text="/search " + "x" * 101)
+    with pytest.raises(SearchPolicyDenied):
+        await gate.service.create_task_from_event(oversized)
+    assert gate.service._tasks == {}
+
+
+async def test_created_task_keeps_principal_snapshot_without_retaining_event(gate):
+    principal = event(text="/search Python docs")
+    context = await gate.service.create_task_from_event(principal)
+    record = gate.service._tasks[context.task_id]
+    assert record.event_identity == (34, 12, 99)
+    assert not hasattr(record, "event")
+
+    principal.user_id = 1
+    authorized = await gate.service.authorize_online(context, "Python docs", "search")
+    assert (authorized.group_id, authorized.user_id) == (34, 12)
 
 
 async def test_group_intersection_and_owner_narrowing_revoke_stale_context(gate):
@@ -293,7 +320,7 @@ async def test_denied_gates_empty_sources_skip_classifier(gate):
     assert gate.classifier.calls == []
 
 
-async def test_unissued_or_forged_handles_and_mutated_principal_are_denied(gate):
+async def test_unissued_or_forged_handles_are_denied_and_event_mutation_is_irrelevant(gate):
     principal = event()
     ctx = await gate.service.create_task_from_event(principal)
     for forged in (
@@ -306,8 +333,7 @@ async def test_unissued_or_forged_handles_and_mutated_principal_are_denied(gate)
         with pytest.raises(SearchPolicyDenied):
             await gate.service.preflight(forged, "Python docs", "search")
     principal.user_id = 1
-    with pytest.raises(SearchPolicyDenied):
-        await gate.service.preflight(ctx, "Python docs", "search")
+    await gate.service.preflight(ctx, "Python docs", "search")
     with pytest.raises(SearchPolicyDenied):
         await gate.service.create_task_from_event(
             SimpleNamespace(group_id=34, user_id=1, role="owner")
@@ -690,7 +716,7 @@ async def test_url_invisible_controls_never_publish(gate, url):
         await gate.service.validate_result_url(url, SearchPurpose.TECHNICAL, "python")
 
 
-async def test_event_user_group_mutation_during_classification_cannot_authorize(gate):
+async def test_event_mutation_during_classification_keeps_original_principal(gate):
     principal = event()
 
     class MutatingClassifier:
@@ -700,8 +726,8 @@ async def test_event_user_group_mutation_during_classification_cannot_authorize(
 
     gate.service.classifier = MutatingClassifier()
     ctx = await gate.service.create_task_from_event(principal)
-    with pytest.raises(SearchPolicyDenied):
-        await gate.service.authorize_online(ctx, "Python docs", "search")
+    authorized = await gate.service.authorize_online(ctx, "Python docs", "search")
+    assert (authorized.group_id, authorized.user_id) == (34, 12)
 
 
 async def test_classifier_timeout_uses_group_narrowed_policy(gate):

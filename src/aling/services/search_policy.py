@@ -63,7 +63,6 @@ class SearchTaskContext:
 class _TaskRecord:
     context: SearchTaskContext
     expires_at: float
-    event: GroupMessageEvent | None = None
     event_identity: tuple[int, int, int] | None = None
     session: PanelSession | None = None
     panel_auth: PanelAuth | None = None
@@ -96,6 +95,11 @@ _SENSITIVE_KEY = re.compile(
 )
 _SENSITIVE_VALUE = re.compile(
     r"(?:(?:api[_ -]?key|access[_ -]?token|token|secret|password|cookie|session)\s*[=:]|bearer\s+[a-z0-9._~+/-]{4,}|https?://[^\s:@/]+:[^\s@/]+@)",
+    re.I,
+)
+_EMBEDDED_URL = re.compile(r"https?://\S+", re.I)
+_AUTH_CALLBACK_SECRET = re.compile(
+    r"(?:[?&]|\b)(?:code|state|id_token|access_token|refresh_token|client_secret)\s*=",
     re.I,
 )
 _QUERY_OPERATOR = re.compile(
@@ -151,12 +155,13 @@ class SearchPolicyService:
         if not self.settings.group_allowed(event.group_id) or event.user_id <= 0:
             raise SearchPolicyDenied("Group or user is outside the configured scope")
         try:
-            source_query = event.original_message.extract_plain_text()
-        except (AttributeError, TypeError):
+            source_query = _event_query(event.original_message.extract_plain_text())
+        except (AttributeError, TypeError, SearchPolicyDenied):
             raise SearchPolicyDenied("Invalid group event") from None
+        if not source_query or len(source_query) > _MAX_QUERY:
+            raise SearchPolicyDenied("Search query is too long or empty")
         context = await self._new_context(event.group_id, event.user_id, source_query)
         record = self._tasks[context.task_id]
-        record.event = event
         record.event_identity = (event.group_id, event.user_id, event.self_id)
         return context
 
@@ -228,10 +233,11 @@ class SearchPolicyService:
             raise SearchPolicyDenied("Unissued or expired task handle")
         if context.group_id != record.context.group_id or context.user_id != record.context.user_id:
             raise SearchPolicyDenied("Task principal changed")
-        if record.event is not None:
-            event = record.event
-            if (event.group_id, event.user_id, event.self_id) != record.event_identity:
-                raise SearchPolicyDenied("Group event principal changed")
+        if record.event_identity is not None and (
+            record.event_identity[:2] != (record.context.group_id, record.context.user_id)
+            or record.event_identity[1] == record.event_identity[2]
+        ):
+            raise SearchPolicyDenied("Group event principal changed")
         if record.session is not None and record.panel_auth is not None:
             try:
                 current = record.panel_auth.authenticate(record.session.session_id)
@@ -318,7 +324,7 @@ class SearchPolicyService:
         deployment, _ = await self._gate(context, operation)
         query = _normalize_query(text)
         record = self._record(context)
-        if record.event is not None and (
+        if record.event_identity is not None and (
             not record.source_query or _event_query(record.source_query) != query
         ):
             # The signed task can search the exact user request only. The owner panel
@@ -640,7 +646,13 @@ def _unsafe_query(query: str) -> bool:
         return True
     if re.search(r"(?:\bsite\s*：|！{1,2}[a-z]|[！!]{1,2}[a-z])", query, re.I):
         return True
-    if query.startswith("https://") or query.startswith("http://"):
+    decoded_query = unquote(query)
+    if (
+        _EMBEDDED_URL.search(query)
+        or _EMBEDDED_URL.search(decoded_query)
+        or _AUTH_CALLBACK_SECRET.search(query)
+        or _AUTH_CALLBACK_SECRET.search(decoded_query)
+    ):
         return True
     return False
 

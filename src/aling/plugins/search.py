@@ -50,6 +50,8 @@ async def handle_search(
     query = argument.extract_plain_text().strip()
     if not query:
         await search_command.finish(MessageSegment.text("用法：/search <关键词>"))
+    if len(query) > 100:
+        await search_command.finish(MessageSegment.text("关键词太长，请控制在 100 字以内。"))
     budget = TaskBudget.start()
     context = None
     try:

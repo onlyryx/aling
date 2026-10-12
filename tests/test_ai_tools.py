@@ -496,7 +496,7 @@ async def test_ai_executes_at_most_two_validated_tools_and_never_system_calls():
     assert registry.calls == ["web_read", "meme_search"]
 
 
-async def test_unsupported_tool_provider_falls_back_to_single_turn_chat():
+async def test_unsupported_tool_provider_does_not_claim_tool_capabilities_or_retry():
     settings = Settings(
         _env_file=None,
         onebot_access_token="test",
@@ -513,7 +513,7 @@ async def test_unsupported_tool_provider_falls_back_to_single_turn_chat():
             raise httpx.HTTPStatusError("unsupported tools", request=request, response=response)
 
         async def chat(self, prompt, history, **kwargs):
-            return "普通聊天正常。"
+            raise AssertionError("Do not retry with the tool-enabled capability prompt")
 
     class Registry:
         definitions = ToolRegistry.definitions
@@ -530,8 +530,13 @@ async def test_unsupported_tool_provider_falls_back_to_single_turn_chat():
 
     outcome = await ChatService(
         settings, UnsupportedClient(), features=Features()
-    ).reply_with_tools(34, 12, "你好", Registry())
-    assert outcome == ChatOutcome("普通聊天正常。")
+    ).reply_with_tools(
+        34, 12, "查 Python 文档", Registry(), task_context=SimpleNamespace(query_id="qid")
+    )
+    assert outcome == ChatOutcome(
+        "当前模型服务暂不支持工具调用或工具请求失败；本次未执行联网操作。"
+    )
+    assert "已搜索" not in outcome.text and "已读取" not in outcome.text
 
 
 @pytest.mark.parametrize(
