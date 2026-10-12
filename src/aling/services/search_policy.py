@@ -634,21 +634,30 @@ def _event_query(text: str) -> str:
 
 
 def _unsafe_query(query: str) -> bool:
-    if not query or len(query) > _MAX_QUERY or "\n" in query or ";" in query:
-        return True
-    if (
-        _FORBIDDEN_TERMS.search(query)
-        or _FORBIDDEN_ENGLISH.search(query)
-        or _SENSITIVE_VALUE.search(query)
-        or _PRIVATE_CONTACT.search(query)
-        or _QUERY_OPERATOR.search(query)
-    ):
-        return True
-    if re.search(r"(?:\bsite\s*：|！{1,2}[a-z]|[！!]{1,2}[a-z])", query, re.I):
+    if not query or len(query) > _MAX_QUERY:
         return True
     decoded_query = query
     for _ in range(_MAX_QUERY + 1):
-        if _EMBEDDED_URL.search(decoded_query) or _AUTH_CALLBACK_SECRET.search(decoded_query):
+        if (
+            not decoded_query
+            or "\n" in decoded_query
+            or ";" in decoded_query
+            or any(
+                ord(char) == 0 or (ord(char) < 32 and char not in "\t") or ord(char) == 127
+                for char in decoded_query
+            )
+        ):
+            return True
+        if (
+            _FORBIDDEN_TERMS.search(decoded_query)
+            or _FORBIDDEN_ENGLISH.search(decoded_query)
+            or _SENSITIVE_VALUE.search(decoded_query)
+            or _PRIVATE_CONTACT.search(decoded_query)
+            or _QUERY_OPERATOR.search(decoded_query)
+            or re.search(r"(?:\bsite\s*：|！{1,2}[a-z]|[！!]{1,2}[a-z])", decoded_query, re.I)
+            or _EMBEDDED_URL.search(decoded_query)
+            or _AUTH_CALLBACK_SECRET.search(decoded_query)
+        ):
             return True
         next_query = unquote(decoded_query)
         if next_query == decoded_query:

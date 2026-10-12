@@ -369,6 +369,39 @@ async def test_nested_encoded_oauth_callback_never_reaches_classifier_or_search(
     assert client.calls == []
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "debug token%253Dprivate123",
+        "debug api_key%253Dprivate123",
+        "debug %2570assword%253Dprivate123",
+    ],
+)
+async def test_nested_encoded_sensitive_marker_never_reaches_classifier_or_search(tmp_path, query):
+    _, _, _, policy, client, service, original_event = await _search_fixture(tmp_path)
+    event = GroupMessageEvent(
+        time=0,
+        self_id=original_event.self_id,
+        post_type="message",
+        message_type="group",
+        sub_type="normal",
+        message_id=original_event.message_id,
+        user_id=original_event.user_id,
+        group_id=original_event.group_id,
+        message=Message("/search " + query),
+        raw_message="/search " + query,
+        font=0,
+        sender={"user_id": original_event.user_id, "role": "member"},
+    )
+    context = await policy.create_task_from_event(event)
+
+    with pytest.raises(SearchError):
+        await service.search(context, query, policy.classifier, budget())
+
+    assert policy.classifier.calls == []
+    assert client.calls == []
+
+
 async def test_oversized_search_request_creates_no_task_or_external_call(tmp_path):
     _, _, _, policy, client, service, event = await _search_fixture(tmp_path)
     query = "x" * 101
