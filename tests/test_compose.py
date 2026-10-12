@@ -15,7 +15,9 @@ def test_search_overlay_is_opt_in_private_and_keeps_base_volumes_unchanged():
     assert "ports" not in service
     assert "search" not in base["services"]["bot"].get("depends_on", {})
     assert set(base["volumes"]) == {"bot-data", "napcat-qq", "napcat-config"}
+    assert base["services"]["bot"]["environment"]["SEARXNG_SECRET"] == ""
     assert "search-cache" in overlay["volumes"]
+    assert service["environment"]["SEARXNG_SECRET"].startswith("${SEARXNG_SECRET:?")
     assert service["environment"]["GRANIAN_LOG_ACCESS_ENABLED"] == "false"
     assert service["environment"]["FORCE_OWNERSHIP"] == "false"
     assert all("/app/data" not in item for item in service["volumes"])

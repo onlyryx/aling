@@ -7,7 +7,7 @@
 
 源码与问题反馈：[GitHub 仓库](https://github.com/onlyryx/aling)。
 
-项目版本：**0.4.0**。使用 Python 3.12+、NoneBot2、OneBot V11、NapCatQQ、SQLite、
+项目版本：**0.5.0**。使用 Python 3.12+、NoneBot2、OneBot V11、NapCatQQ、SQLite、
 httpx、BeautifulSoup 与 Pillow，采用 `plugins → services → core` 分层，保留
 NoneBot 原生插件加载方式。许可证：MIT。
 
@@ -16,7 +16,8 @@ NoneBot 原生插件加载方式。许可证：MIT。
 - `/help`、`/ping`：查看可用帮助和连通性；`/status` 仅供配置的超级用户查看 OneBot 状态。
 - 群内明确 `@阿零 你的问题`：调用配置的 OpenAI 兼容聊天接口。
 - `/read <URL> [--summary]`：读取公开网页；摘要会把选取的网页正文发送给模型。
-- `/meme <关键词>`：从部署者配置的本地表情包清单中查找并发送一张图片。
+- `/search <关键词>`：经管理员用途和来源策略核准后，使用可选自托管 SearXNG 搜索。
+- `/meme [--mode local|auto|online] <关键词>`：默认从本地素材查找；auto 在本地未命中时才尝试获准的在线静态图片。
 - `/mute @成员 [分钟]`、`/unmute @成员`：由本群群主或管理员发起，机器人也必须有群管理权限。
 - `/proactive on|off` 与 `/proactive schedule HH:MM <文本>|off|status`：配置显式定时消息。
 - `/feature ai|web|meme|memory on|off`：本群管理员切换本群功能；启用记忆需先阅读说明再确认。
@@ -26,12 +27,13 @@ NoneBot 原生插件加载方式。许可证：MIT。
 AI 聊天不收集普通群聊。短期会话默认关闭，启用后只暂存明确 @ 机器人的
 “群号 + 用户号”独立问答，最多 6 轮；空闲 10 分钟后过期，后台最迟一分钟内清理，重启即清空。
 `/forget` 可清除自己的会话，即使短期会话功能已关闭也可使用。
-AI 可选工具调用默认关闭，只能请求白名单内的网页阅读或本地表情包搜索，不支持系统命令、
+AI 可选工具调用默认关闭，只能请求当前获准的联网搜索、网页阅读或表情包搜索，不支持系统命令、
 代码执行或群管理。主动发言和群级功能均受全局开关、群级权限与频率限制约束。
 
 默认功能均关闭或受显式命令控制。启用方法见下方配置和 [表情包素材说明](docs/memes/README.md)。
 人格提示词位于 `src/aling/prompts/default.txt`，`AI_SYSTEM_PROMPT` 环境变量仍可覆盖。
 总体安全和数据流见[架构说明](docs/architecture.md)，版本变化见[变更记录](CHANGELOG.md)。
+搜索部署、来源审核、外发数据、成本、日志及回滚步骤见[联网运维说明](docs/search-operations.md)。
 
 ## 本地运行
 
@@ -77,7 +79,9 @@ AI_MODEL=服务商支持的模型标识
 | AI 聊天 | `/feature global ai on`（需模型凭据） | `/feature ai on` |
 | 网页阅读 | `/feature global web on` | `/feature web on` |
 | 本地表情包 | `/feature global meme on` 并配置素材清单 | `/feature meme on` |
-| AI 工具选择 | `AI_TOOLS_ENABLED=true`，且启用 AI 与对应网页/表情包功能 | 使用明确 @ 提问；模型供应商需支持工具调用 |
+| AI 工具选择 | 面板中由超级用户启用；初次启动种子值仍来自 `AI_TOOLS_ENABLED` | 使用明确 @ 提问；模型供应商需支持工具调用 |
+| 联网搜索 | `/feature global search on`，需先在面板确认数据流并配置策略/SearXNG | `/feature search on`；需 AI 用途分类与获准来源 |
+| 在线表情 | `/feature global online_meme on`，需设置审核过的页面和图片来源 | `/feature online_meme on`；`/meme` 默认仍为本地模式 |
 | 短期会话 | `/feature global ai on`、`/feature global memory on` | `/feature memory on` 阅读数据说明，再 `/feature memory confirm` |
 | 定时主动消息 | `PROACTIVE_ENABLED=true` | `/proactive on` 并配置 `/proactive schedule HH:MM <文本>` |
 
@@ -85,7 +89,11 @@ AI_MODEL=服务商支持的模型标识
 回复会随新问题发送给模型服务。使用 `/forget` 清除个人会话，管理员运行 `/feature memory off`
 会清除整群的短期会话缓存。关闭本群 AI 同样会清理本群缓存；全局关闭 AI 或记忆则清理全部缓存，
 正在处理的旧回复不会重新写入已清除的会话。群内开关不能覆盖运行时全局开关。
-`AI_TOOLS_ENABLED` 和 `PROACTIVE_ENABLED` 仍仅通过部署配置调整，不属于 `/feature global` 命令。
+`AI_TOOLS_ENABLED` 只为 SQLite 中 AI 工具开关首次初始化提供默认值；后续通过管理面板调整。
+`PROACTIVE_ENABLED` 仍仅通过部署配置调整，不属于 `/feature global` 命令。
+
+联网能力默认关闭且需要可选 SearXNG profile。示例配置、启动顺序、来源审核、查询会发给哪些服务，
+以及故障排查和回滚方式均列于[联网运维说明](docs/search-operations.md)。
 
 ```sh
 uv run --frozen aling
@@ -263,15 +271,17 @@ uv sync --frozen --extra dev
 uv run --frozen --extra dev pytest
 uv run --frozen --extra dev ruff check .
 uv run --frozen --extra dev ruff format --check .
+uv lock --check
 uv build
 RYXBOT_ENV_FILE=.env.example docker compose --env-file .env.example --profile qq config --quiet
+RYXBOT_ENV_FILE=.env.example docker compose --env-file .env.example -f compose.yaml -f compose.search.yaml --profile qq --profile search config --quiet
 docker build -t aling:local .
 uv run --frozen aling doctor
 ```
 
 测试使用模拟 HTTP 传输与带令牌的本地 ASGI WebSocket，不接入真实 QQ、模型或网页。
 GitHub Actions 执行测试、代码检查、包构建、Compose 配置验证和容器镜像构建。
-本次验证结果与环境限制见 [验证记录](docs/verification.md)。
+联网配置检查不启动 SearXNG；容器引擎实际可用性和本次验收范围见 [验证记录](docs/verification.md)。
 
 ## 升级与数据兼容
 

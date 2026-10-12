@@ -1,5 +1,18 @@
 # 验证记录
 
+## v0.5.0 Task 8 本地发布准备检查（未发布）
+
+验证日期：2026-10-12（Asia/Shanghai）；工作树：`codex/aling-v05-design`。
+
+- `uv run --frozen --extra dev pytest tests/test_cli.py tests/webui/test_distribution.py -q`：9 项通过；CLI 版本、wheel 中的人格提示词与面板静态资源均有断言。
+- `uv run --frozen --extra dev pytest -q`：544 项通过，保留 1 条已有 Starlette/httpx TestClient 弃用提示。
+- `uv run --frozen --extra dev ruff check .`、`uv run --frozen --extra dev ruff format --check .`、`uv lock --check` 均通过。
+- `uv build` 成功生成 `dist/aling-0.5.0.tar.gz` 和 `dist/aling-0.5.0-py3-none-any.whl`；`uv run --frozen aling --version` 输出 `ALING 0.5.0`。
+- 基础 Compose 命令和合并 `compose.search.yaml` 的可选 profile 命令均以 `.env.example` 执行 `config --quiet` 并通过。合并配置检查确认项目名 `ryxbot`、既有三个命名卷、bot/search 共用网络均保留，SearXNG 无宿主机端口，且 `SEARXNG_SECRET` 不传入 bot 环境。
+- Docker Engine 可用；`docker build -t aling:0.5.0-task8-check .` 成功。只构建镜像，未启动 bot、SearXNG、NapCat 或任何其他容器。
+- `.env.example` 中的 SearXNG 密钥是只供 Compose 配置检查的显式占位符；启动前须本地替换。真实 `.env` 和真实 `deploy/searxng/settings.yml` 未读取或修改。
+- SearXNG 实际启动、上游引擎质量/可用性、SearXNG 容器日志、模型费用/留存和 QQ 送达均未在本地模拟验收之外验证；Task 8 完成后仍需独立全分支审查。未推送、打标签、部署或连接真实账号/服务。
+
 ## v0.4.0 面板交付检查（本地，未发布）
 
 验证日期：2026-10-12（Asia/Shanghai）。

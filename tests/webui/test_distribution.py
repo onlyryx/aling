@@ -56,9 +56,10 @@ for name, source in sources.items():
         names = set(archive.namelist())
         metadata = next(name for name in names if name.endswith("METADATA"))
         package_metadata = archive.read(metadata).decode()
+    assert "aling/prompts/default.txt" in names
     assert "aling/webui/static/index.html" in names
     assert "aling/webui/static/styles.css" in names
     assert "aling/webui/static/pages/schedules.js" in names
     assert "aling/webui/static/pages/search.js" in names
-    assert "Version: 0.4.0" in package_metadata
-    assert tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"] == "0.4.0"
+    assert "Version: 0.5.0" in package_metadata
+    assert tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"] == "0.5.0"
