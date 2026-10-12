@@ -18,7 +18,10 @@ export function createMemes(container) {
   notice.setAttribute("role", "status");
   const status = make("p", "help", "正在读取素材目录…");
   const uploads = make("section", "card section-card");
-  uploads.append(make("h2", "", "上传一张图片"), make("p", "help", "PNG、JPEG、静态 WebP 或 GIF；最大 5 MB、1200 万像素。上传后请填写说明与标签，未整理素材不会用于检索。"), status);
+  const searchSettings = make("button", "secondary", "配置联网表情来源");
+  searchSettings.type = "button";
+  searchSettings.addEventListener("click", () => document.querySelector('[data-page="search"]')?.click());
+  uploads.append(make("h2", "", "上传一张图片"), make("p", "help", "PNG、JPEG、静态 WebP 或 GIF；最大 5 MB、1200 万像素。上传后请填写说明与标签，未整理素材不会用于检索。联网表情使用单独批准的图片与来源策略。"), searchSettings, status);
   const uploadForm = make("form");
   const fileLabel = make("label", "", "选择图片");
   const file = make("input");

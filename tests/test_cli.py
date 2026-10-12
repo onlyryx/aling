@@ -145,4 +145,4 @@ def test_cli_arguments_do_not_start_server_or_read_config(tmp_path, args, expect
     assert "Invalid configuration" not in result.stderr
     assert not (tmp_path / "settings.db").exists()
     if args == ["--version"]:
-        assert "0.4.0" in result.stdout
+        assert "0.5.0" in result.stdout

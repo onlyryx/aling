@@ -33,6 +33,35 @@ class MemeQuotaError(MemeCatalogError):
     pass
 
 
+def parse_meme_command(value: str, *, default_mode: str = "local") -> tuple[str, str]:
+    """Parse the optional deterministic mode prefix with a caller-selected default."""
+    if not isinstance(value, str):
+        raise MemeCatalogError("Invalid meme command")
+    if default_mode not in {"local", "auto", "online"}:
+        raise MemeCatalogError("Invalid default meme mode")
+    text = value.strip()
+    mode = default_mode
+    if text.startswith("--mode"):
+        head, separator, remainder = text.partition(" ")
+        if not separator or head != "--mode":
+            raise MemeCatalogError("Invalid meme mode syntax")
+        selected, separator, text = remainder.strip().partition(" ")
+        if not separator or selected not in {"local", "auto", "online"}:
+            raise MemeCatalogError("Invalid meme mode")
+        mode = selected
+        text = text.strip()
+    return mode, text
+
+
+async def parse_group_meme_command(store, group_id: int, value: str) -> tuple[str, str]:
+    """Apply the stored group mode only when the command does not specify one."""
+    text = value.strip() if isinstance(value, str) else value
+    if isinstance(text, str) and text.startswith("--mode"):
+        return parse_meme_command(text)
+    policy = await store.get_group_search_policy(group_id)
+    return parse_meme_command(text, default_mode=policy.meme_mode)
+
+
 @dataclass(frozen=True)
 class ValidatedImage:
     content: bytes

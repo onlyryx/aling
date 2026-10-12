@@ -115,3 +115,28 @@ async def confirm_memory(request: Request, group_id: GroupID, body: Confirmation
         ),
     )
     return asdict(await _run(request, service.state(group_id, "memory")))
+
+
+@router.get("/runtime-settings/ai-tools")
+async def get_ai_tools(request: Request):
+    runtime = request.app.state.panel_runtime
+    try:
+        return {"enabled": await runtime.features.ai_tools_enabled()}
+    except (sqlite3.Error, OSError):
+        runtime.status.record_diagnostic("storage", "read_failed")
+        raise HTTPException(503, "storage_unavailable") from None
+
+
+@router.put("/runtime-settings/ai-tools")
+async def set_ai_tools(request: Request, body: Toggle):
+    runtime = request.app.state.panel_runtime
+    try:
+        await runtime.features.set_ai_tools_enabled(
+            request.state.panel_session.owner_id, body.enabled
+        )
+        return {"enabled": await runtime.features.ai_tools_enabled()}
+    except PermissionError:
+        raise HTTPException(403, "owner_required") from None
+    except (sqlite3.Error, OSError):
+        runtime.status.record_diagnostic("storage", "save_failed")
+        raise HTTPException(503, "storage_unavailable") from None

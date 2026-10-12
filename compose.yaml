@@ -13,6 +13,8 @@ services:
       PORT: "8080"
       DATABASE_PATH: /app/data/ryxbot.db
       MEME_DIR: /app/memes
+      # SEARXNG_SECRET belongs only to the optional search service.
+      SEARXNG_SECRET: ""
     ports:
       - "127.0.0.1:8080:8080"
     volumes:

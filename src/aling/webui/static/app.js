@@ -3,6 +3,7 @@ import { createOverview } from "./pages/overview.js";
 import { createFeatures } from "./pages/features.js";
 import { createMemes } from "./pages/memes.js";
 import { createSchedules } from "./pages/schedules.js";
+import { createSearch } from "./pages/search.js";
 
 const byId = (id) => document.getElementById(id);
 const loginView = byId("login-view");
@@ -14,6 +15,7 @@ const pages = {
   features: ["群与功能", "按群查看功能与依赖，操作结果由服务端确认。", "群与功能正在接入", "功能开关和群选择将在后续版本接入。当前页面尚未提供修改操作。"],
   memes: ["表情包", "管理阿零的本地素材与说明。", "素材管理正在接入", "素材列表、上传与编辑将在后续版本接入。当前页面尚未提供素材操作。"],
   schedules: ["定时消息", "查看计划和发言条件，编辑后由阿零按当前规则尝试发送。", "", ""],
+  search: ["联网设置", "管理获准用途、来源、额度和联网服务状态。", "", ""],
 };
 let theme = "light";
 try { if (localStorage.getItem("aling_panel_theme") === "dark") theme = "dark"; } catch { /* Theme still works when storage is unavailable. */ }
@@ -47,7 +49,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 let activePage = "overview";
-const pageFactories = { overview: createOverview, features: createFeatures, memes: createMemes, schedules: createSchedules };
+const pageFactories = { overview: createOverview, features: createFeatures, memes: createMemes, schedules: createSchedules, search: createSearch };
 const pageInstances = new Map();
 function openPage(page) {
   activePage = page;

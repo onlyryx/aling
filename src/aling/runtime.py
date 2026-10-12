@@ -1,19 +1,28 @@
+from __future__ import annotations
+
 import asyncio
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import httpx
 
 from aling.core.config import Settings
 from aling.core.storage import GroupSettingsStore
-from aling.services.ai import ChatService, OpenAIClient
+from aling.services.ai import ChatService, ModelRequestScheduler, OpenAIClient
 from aling.services.features import FeatureService
 from aling.services.memes import LocalMemeProvider
+from aling.services.online_memes import MemeImageClient, OnlineMemeService
 from aling.services.proactive import ProactiveSender
 from aling.services.scheduler import ProactiveScheduler
+from aling.services.search_budget import SearchAdmission
 from aling.services.sessions import SessionStore
 from aling.services.status import ConnectionStatus
 from aling.services.tools import ToolRegistry
 from aling.services.web import SafeWebClient, WebReadService
+
+if TYPE_CHECKING:
+    from aling.services.search import SearchService, SearxngClient
+    from aling.services.search_policy import SearchPolicyService
 
 
 @dataclass
@@ -25,25 +34,30 @@ class Runtime:
     web: SafeWebClient
     web_read: WebReadService
     memes: LocalMemeProvider
+    online_memes: OnlineMemeService
     proactive: ProactiveSender
     scheduler: ProactiveScheduler
     features: FeatureService
     status: ConnectionStatus = field(default_factory=ConnectionStatus)
     sessions: SessionStore = field(default_factory=SessionStore)
     tools: ToolRegistry | None = None
+    search_policy: SearchPolicyService | None = None
+    search_client: SearxngClient | None = None
+    search: SearchService | None = None
+    model_requests: ModelRequestScheduler | None = None
     _session_expiry_task: asyncio.Task | None = field(default=None, repr=False)
 
     @classmethod
     def create(
-        cls, settings: Settings, ai_transport: httpx.AsyncBaseTransport | None = None
-    ) -> "Runtime":
-        store = GroupSettingsStore(settings.database_path)
-        ai = OpenAIClient(settings, transport=ai_transport)
-        web = SafeWebClient(timeout=settings.web_timeout, max_bytes=settings.web_max_bytes)
-        status = ConnectionStatus()
-        chat = ChatService(settings, ai, status=status)
-        web_read = WebReadService(settings, web, chat, status=status)
-        memes = LocalMemeProvider(settings.meme_dir)
+        cls,
+        settings: Settings,
+        ai_transport: httpx.AsyncBaseTransport | None = None,
+        search_transport: httpx.AsyncBaseTransport | None = None,
+    ) -> Runtime:
+        from aling.services.search import SearchService, SearxngClient
+        from aling.services.search_policy import SearchPolicyService
+
+        store = GroupSettingsStore(settings.database_path, superusers=settings.superusers)
         sessions = SessionStore(
             ttl_seconds=settings.ai_session_ttl,
             max_turns=settings.ai_session_max_turns,
@@ -51,7 +65,35 @@ class Runtime:
             max_sessions=settings.ai_session_max_count,
         )
         features = FeatureService(settings, store, sessions=sessions)
+        ai = OpenAIClient(settings, transport=ai_transport)
+        model_requests = ModelRequestScheduler(
+            ai, max_concurrency=settings.ai_max_concurrency, timeout=settings.ai_timeout
+        )
+        web = SafeWebClient(timeout=settings.web_timeout, max_bytes=settings.web_max_bytes)
+        status = ConnectionStatus()
+        chat = ChatService(
+            settings, ai, status=status, features=features, model_scheduler=model_requests
+        )
+        web_read = WebReadService(settings, web, chat, status=status)
+        memes = LocalMemeProvider(settings.meme_dir)
         proactive = ProactiveSender(settings, store)
+        search_policy = SearchPolicyService(features, classifier=model_requests)
+        search_client = SearxngClient(settings, transport=search_transport)
+        admission = SearchAdmission()
+        search = SearchService(search_policy, search_client, admission=admission)
+        online_memes = OnlineMemeService(
+            memes,
+            search_policy,
+            search_client,
+            MemeImageClient(timeout=settings.web_timeout),
+            admission=admission,
+        )
+
+        async def revoke_search_tasks(group_id: int | None) -> None:
+            await search_policy.revoke_group_tasks(group_id)
+            await online_memes.expire()
+
+        features.revoke_search_tasks = revoke_search_tasks
         return cls(
             settings,
             store,
@@ -60,12 +102,25 @@ class Runtime:
             web,
             web_read,
             memes,
+            online_memes,
             proactive,
             ProactiveScheduler(settings, store, proactive),
             features,
             status,
             sessions,
-            ToolRegistry(features, web_read, memes, timeout=settings.ai_tool_timeout),
+            ToolRegistry(
+                features,
+                web_read,
+                memes,
+                timeout=settings.ai_tool_timeout,
+                search=search,
+                search_policy=search_policy,
+                online_memes=online_memes,
+            ),
+            search_policy,
+            search_client,
+            search,
+            model_requests,
         )
 
     async def startup(self) -> None:
@@ -78,6 +133,7 @@ class Runtime:
         while True:
             await asyncio.sleep(60)
             await self.sessions.expire()
+            await self.online_memes.expire()
 
     async def shutdown(self) -> None:
         await self.scheduler.stop()
@@ -89,8 +145,11 @@ class Runtime:
                 pass
             self._session_expiry_task = None
         await self.sessions.clear()
+        await self.online_memes.aclose()
         await self.ai.aclose()
         await self.web.aclose()
+        if self.search_client is not None:
+            await self.search_client.aclose()
 
 
 _runtime: Runtime | None = None

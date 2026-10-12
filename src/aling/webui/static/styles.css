@@ -123,6 +123,18 @@ select { width: 100%; height: 44px; padding: 0 12px; border-radius: 9px; border:
 .feature-controls { display: flex; align-items: center; gap: 18px; flex-shrink: 0; }
 .feature-controls label { display: flex; gap: 8px; align-items: center; margin: 0; font-weight: 400; }
 .feature-controls input { width: 20px; height: 20px; accent-color: var(--primary); }
+.search-purpose-list, .search-check-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 10px 18px; margin: 12px 0 22px; }
+.search-check { display: flex; align-items: center; gap: 9px; margin: 0; font-weight: 400; overflow-wrap: anywhere; }
+.search-check input { width: 20px; height: 20px; flex: 0 0 auto; accent-color: var(--primary); }
+.search-limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px 16px; margin: 12px 0 20px; }
+.search-limit { margin: 0; font-size: 13px; }
+.search-limit input { margin-top: 5px; }
+.search-source { display: flex; justify-content: space-between; align-items: center; gap: 14px; border-top: 1px solid var(--border); padding: 10px 0; overflow-wrap: anywhere; }
+.search-source p { margin: 0; }
+.search-source-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px 16px; }
+.search-source-form label { margin: 10px 0; }
+.search-source-form input { margin-top: 5px; }
+.search-source-form + button { margin: 8px 0 16px; }
 .memory-dialog { max-width: min(560px, calc(100vw - 32px)); padding: 28px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); color: var(--text); }
 .memory-dialog::backdrop { background: rgb(0 0 0 / 45%); }
 .memory-dialog .actions { justify-content: flex-end; }

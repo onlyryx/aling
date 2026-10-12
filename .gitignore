@@ -9,6 +9,7 @@ dist/
 .env
 .env.*
 !.env.example
+/deploy/searxng/settings.yml
 data/
 *.db
 *.db-*

@@ -30,7 +30,14 @@ def test_disabled_dependency_and_global_lists(runtime_panel):
     result = client.put("/api/admin/groups/34/features/web", json={"enabled": True})
     assert result.status_code == 409
     assert result.json()["detail"] == "feature_unavailable"
-    assert set(client.get("/api/admin/features/global").json()) == {"ai", "web", "meme", "memory"}
+    assert set(client.get("/api/admin/features/global").json()) == {
+        "ai",
+        "web",
+        "meme",
+        "memory",
+        "search",
+        "online_meme",
+    }
     assert client.get("/api/admin/features/global/web").json()["blocked_by"] == ["global_off"]
     assert (
         "scope_restricted"
@@ -140,7 +147,7 @@ def test_safe_save_failure_and_group_id_validation(runtime_panel, monkeypatch):
 
 def test_page_modules_are_served_inside_panel(runtime_panel):
     client, _ = runtime_panel
-    for path in ["overview", "features"]:
+    for path in ["overview", "features", "search"]:
         response = client.get(f"/webui/pages/{path}.js")
         assert response.status_code == 200
         assert "adminFetch" in response.text
