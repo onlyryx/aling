@@ -347,6 +347,7 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
             exchange(event("what did I ask?", mention=True))
             assert [message["content"] for message in model_messages[-1]] == [
                 config.ai_system_prompt,
+                "本次请求没有启用可调用工具；不要声称已联网搜索或读取网页。",
                 "remember this",
                 "hello [CQ:at,qq=all]",
                 "what did I ask?",
@@ -363,19 +364,23 @@ def test_authenticated_onebot_commands_ai_permissions_and_ignored_events(tmp_pat
             exchange(event("/feature memory on", role="admin"))
             exchange(event("/feature memory confirm", role="admin"))
             exchange(event("fresh question", mention=True))
-            assert len(model_messages[-1]) == 2
+            assert [message["role"] for message in model_messages[-1]] == [
+                "system",
+                "system",
+                "user",
+            ]
             assert "关闭" in exchange(event("/feature global memory off"))[0]["data"]["text"]
             assert "已清除" in exchange(event("/forget"))[0]["data"]["text"]
             exchange(event("/feature global memory on"))
             exchange(event("after global disable", mention=True))
-            assert len(model_messages[-1]) == 2
+            assert len(model_messages[-1]) == 3
             assert "/help" in exchange(event("/unknown-command"))[0]["data"]["text"]
 
             async def selected_meme(*args, **kwargs):
                 return ChatOutcome("AI text survives an image failure", "hello")
 
             monkeypatch.setattr(runtime.chat, "reply_with_tools", selected_meme)
-            monkeypatch.setattr(config, "ai_tools_enabled", True)
+            asyncio.run(runtime.features.set_ai_tools_enabled(12, True))
             ws.send_json(event("send a meme", mention=True))
             image_request = ws.receive_json()
             assert image_request["params"]["message"][1]["type"] == "image"

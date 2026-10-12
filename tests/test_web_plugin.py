@@ -122,10 +122,11 @@ async def test_explicit_url_keeps_web_gate_without_search_sources_classifier_or_
     from aling.services.tools import ToolRegistry
 
     config = settings(superusers={12}, allowed_groups={34})
-    store = GroupSettingsStore(tmp_path / "explicit-read.db")
+    store = GroupSettingsStore(tmp_path / "explicit-read.db", superusers={12})
     await store.initialize()
     features = FeatureService(config, store)
     await features.initialize()
+    await features.set_ai_tools_enabled(12, True)
     await features.set_global(12, "web", True)
     await store.set_feature_enabled(34, "web", True)
     calls = []
@@ -147,7 +148,10 @@ async def test_explicit_url_keeps_web_gate_without_search_sources_classifier_or_
         assert not await features.enabled(34, "ai")
         assert not await features.enabled(34, "search")
         assert not (await store.get_deployment_search_policy()).sources
-        result = await tools.call("web_read", {"url": "https://unlisted.example.org/path"}, context)
+        url = "https://unlisted.example.org/path"
+        result = await tools.call(
+            "web_read", {"url": url}, context, task_context=object(), prompt=url
+        )
         assert result["ok"] and "Explicit body" in result["excerpt"]
         await store.set_feature_enabled(34, "web", False)
         assert not (

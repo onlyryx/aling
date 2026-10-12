@@ -131,6 +131,19 @@ class SearchPolicyService:
         self.clock = clock
         self._tasks: OrderedDict[str, _TaskRecord] = OrderedDict()
 
+    async def search_ready(self, group_id: int) -> bool:
+        if not await self.features.enabled(group_id, "search"):
+            return False
+        deployment = await self.store.get_deployment_search_policy()
+        group = await self.store.get_group_search_policy(group_id)
+        permitted = deployment.allowed_purposes
+        if group.allowed_purposes is not None:
+            permitted = permitted & group.allowed_purposes
+        return any(
+            self._purpose_sources(deployment, group, SearchPurpose(purpose), kind="page")
+            for purpose in permitted
+        )
+
     async def create_task_from_event(self, event: GroupMessageEvent) -> SearchTaskContext:
         if not isinstance(event, GroupMessageEvent) or event.user_id == event.self_id:
             raise SearchPolicyDenied("A real group user is required")

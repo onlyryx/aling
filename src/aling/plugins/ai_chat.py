@@ -7,6 +7,7 @@ from nonebot.plugin import PluginMetadata
 from aling.core.events import explicit_group_prompt
 from aling.core.logging import log
 from aling.runtime import get_runtime
+from aling.services.search_budget import TaskBudget, deliver_with_budget
 
 __plugin_meta__ = PluginMetadata(
     name="AI 聊天",
@@ -49,13 +50,32 @@ async def chat_handler(event: GroupMessageEvent) -> None:
     revision = runtime.sessions.revision
     memory_enabled = await runtime.features.enabled(event.group_id, "memory")
     history = await runtime.sessions.get(event.group_id, event.user_id) if memory_enabled else []
-    if runtime.settings.ai_tools_enabled and runtime.tools is not None:
+    tools_enabled = await runtime.features.ai_tools_enabled()
+    budget = TaskBudget.start() if tools_enabled and runtime.tools is not None else None
+    task_context = None
+    if budget is not None and runtime.search_policy is not None:
+        try:
+            task_context = await runtime.search_policy.create_task_from_event(event)
+        except Exception:
+            task_context = None
+    if tools_enabled and runtime.tools is not None:
         outcome = await runtime.chat.reply_with_tools(
-            event.group_id, event.user_id, prompt, runtime.tools, history=history
+            event.group_id,
+            event.user_id,
+            prompt,
+            runtime.tools,
+            history=history,
+            task_context=task_context,
+            budget=budget,
         )
     else:
         outcome = None
-        answer = await runtime.chat.reply(event.group_id, prompt, history=history)
+        answer = await runtime.chat.reply(
+            event.group_id,
+            prompt,
+            history=history,
+            capability="本次请求没有启用可调用工具；不要声称已联网搜索或读取网页。",
+        )
     if outcome is not None:
         answer = outcome.text
     if memory_enabled and await runtime.features.enabled(event.group_id, "memory"):
@@ -79,10 +99,18 @@ async def chat_handler(event: GroupMessageEvent) -> None:
             log.warning("AI selected meme could not be sent")
     if len(message) > 1:
         try:
-            await chat.send(message)
+            if budget is not None:
+                sent = await deliver_with_budget(budget, lambda: chat.send(message))
+                if not sent:
+                    await chat.finish()
+            else:
+                await chat.send(message)
         except Exception as exc:
             log.warning("AI meme send failed ({})", type(exc).__name__)
             await chat.finish(MessageSegment.text(answer + "\n（表情包发送失败。）"))
+        await chat.finish()
+    if budget is not None:
+        await deliver_with_budget(budget, lambda: chat.send(message))
         await chat.finish()
     await chat.finish(message)
 
